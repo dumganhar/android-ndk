@@ -7,7 +7,7 @@ model {
 
         defaultConfig {
             applicationId = 'com.example.hellojni'
-            minSdkVersion.apiLevel = 4
+            minSdkVersion.apiLevel = 10
             targetSdkVersion.apiLevel = 23
         }
         /*
@@ -17,6 +17,9 @@ model {
             moduleName = 'hello-jni'
             toolchain = 'clang'
             CFlags.addAll(['-Wall'])
+            cppFlags.addAll(['-std=c++11', '-Wall'])
+            ldLibs.addAll(['log', 'OpenSLES', 'android'])
+            stl 'gnustl_static'
         }
         buildTypes {
             release {
@@ -49,7 +52,7 @@ model {
                 ndk.abiFilters.add("mips64")
             }
             // To include all cpu architectures, leaves abiFilters empty
-            create("all")
+//            create("all")
         }
     }
 }

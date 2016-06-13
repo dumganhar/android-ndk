@@ -15,6 +15,8 @@
  *
  */
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <jni.h>
 
 /* This is a trivial JNI example where we use a native method
@@ -59,5 +61,19 @@ Java_com_example_hellojni_HelloJni_stringFromJNI( JNIEnv* env,
    #define ABI "unknown"
 #endif
 
-    return (*env)->NewStringUTF(env, "Hello from JNI !  Compiled with ABI " ABI ".");
+  return (*env)->NewStringUTF(env, "Hello from JNI !  Compiled with ABI " ABI ".");
+}
+
+void hellocpp();
+
+JNIEXPORT jstring JNICALL
+Java_com_example_hellojni_HelloJni_invokeCPPMethod(JNIEnv *env, jobject instance, jstring text_) {
+  const char *text = (*env)->GetStringUTFChars(env, text_, 0);
+  char buf[100] = {0};
+  sprintf(buf, "Hello world from c: %s", text);
+
+  (*env)->ReleaseStringUTFChars(env, text_, text);
+  hellocpp();
+
+  return (*env)->NewStringUTF(env, buf);
 }
