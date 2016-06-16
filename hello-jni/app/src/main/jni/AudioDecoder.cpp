@@ -3,11 +3,15 @@
 //
 
 #include "AudioDecoder.h"
+#include "AudioResampler.h"
+#include "BufferProvider.h"
 
 #include <android/log.h>
 #include <unistd.h>
 
-#define LOG_TAG "cjh"
+using namespace cocos2d;
+
+#define LOG_TAG "AudioDecoder"
 #define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
@@ -35,6 +39,15 @@ static void ExitOnErrorFunc( SLresult result , int line)
     }
 }
 
+static void checkMetaData(int index, const char* key)
+{
+    if (index != -1) {
+        LOGD("Key %s is at index %d", key, index);
+    } else {
+        LOGE("Unable to find key %s", key);
+    }
+}
+
 class SLAudioDecoderCallbackProxy
 {
 public:
@@ -59,16 +72,21 @@ public:
     }
 };
 
-AudioDecoder::AudioDecoder(SLEngineItf engineItf, const std::string &url)
+AudioDecoder::AudioDecoder(SLEngineItf engineItf, const std::string &url, int sampleRate)
         : _engineItf(engineItf)
         , _url(url)
         , _pcmMetaData(NULL)
         , _formatQueried(false)
         , _prefetchError(false)
         , _counter(0)
-        , _channelCountKeyIndex(-1)
+        , _numChannelsKeyIndex(-1)
         , _sampleRateKeyIndex(-1)
+        , _bitsPerSampleKeyIndex(-1)
+        , _containerSizeKeyIndex(-1)
+        , _channelMaskKeyIndex(-1)
+        , _endiannessKeyIndex(-1)
         , _eos(false)
+        , _sampleRate(sampleRate)
 {
     memset(_pcmData, 0, sizeof(_pcmData));
     auto pcmBuffer = std::make_shared<std::vector<char>>();
@@ -153,11 +171,11 @@ void AudioDecoder::start() {
     /*    set up the format of the data in the buffer queue */
     pcm.formatType = SL_DATAFORMAT_PCM;
     // FIXME valid value required but currently ignored
-    pcm.numChannels = 1;
+    pcm.numChannels = 2;
     pcm.samplesPerSec = SL_SAMPLINGRATE_44_1;
     pcm.bitsPerSample = SL_PCMSAMPLEFORMAT_FIXED_16;
-    pcm.containerSize = 16;
-    pcm.channelMask = SL_SPEAKER_FRONT_CENTER;
+    pcm.containerSize = SL_PCMSAMPLEFORMAT_FIXED_16;
+    pcm.channelMask = SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT;
     pcm.endianness = SL_BYTEORDER_LITTLEENDIAN;
 
     decDest.pLocator = (void *) &decBuffQueue;
@@ -241,7 +259,7 @@ void AudioDecoder::start() {
     ExitOnError(result);
     /*     2/ block until data has been prefetched */
     SLuint32 prefetchStatus = SL_PREFETCHSTATUS_UNDERFLOW;
-    SLuint32 timeOutIndex = 500; // time out prefetching after 5s
+    SLuint32 timeOutIndex = 500; //cjh time out prefetching after 5s
     while ((prefetchStatus != SL_PREFETCHSTATUS_SUFFICIENTDATA) && (timeOutIndex > 0) &&
            !_prefetchError) {
         usleep(10 * 1000);
@@ -288,25 +306,28 @@ void AudioDecoder::start() {
                  i, keyInfo->size, keyInfo->data, valueSize);
             /* find out the key index of the metadata we're interested in */
             if (!strcmp((char*)keyInfo->data, ANDROID_KEY_PCMFORMAT_NUMCHANNELS)) {
-                _channelCountKeyIndex = i;
+                _numChannelsKeyIndex = i;
             } else if (!strcmp((char*)keyInfo->data, ANDROID_KEY_PCMFORMAT_SAMPLERATE)) {
                 _sampleRateKeyIndex = i;
+            } else if (!strcmp((char*)keyInfo->data, ANDROID_KEY_PCMFORMAT_BITSPERSAMPLE)) {
+                _bitsPerSampleKeyIndex = i;
+            } else if (!strcmp((char*)keyInfo->data, ANDROID_KEY_PCMFORMAT_CONTAINERSIZE)) {
+                _containerSizeKeyIndex = i;
+            } else if (!strcmp((char*)keyInfo->data, ANDROID_KEY_PCMFORMAT_CHANNELMASK)) {
+                _channelMaskKeyIndex = i;
+            } else if (!strcmp((char*)keyInfo->data, ANDROID_KEY_PCMFORMAT_ENDIANNESS)) {
+                _endiannessKeyIndex = i;
             }
             free(keyInfo);
         }
     }
-    if (_channelCountKeyIndex != -1) {
-        LOGD("Key %s is at index %d\n",
-             ANDROID_KEY_PCMFORMAT_NUMCHANNELS, _channelCountKeyIndex);
-    } else {
-        LOGE("Unable to find key %s\n", ANDROID_KEY_PCMFORMAT_NUMCHANNELS);
-    }
-    if (_sampleRateKeyIndex != -1) {
-        LOGD("Key %s is at index %d\n",
-             ANDROID_KEY_PCMFORMAT_SAMPLERATE, _sampleRateKeyIndex);
-    } else {
-        LOGE("Unable to find key %s\n", ANDROID_KEY_PCMFORMAT_SAMPLERATE);
-    }
+
+    checkMetaData(_numChannelsKeyIndex, ANDROID_KEY_PCMFORMAT_NUMCHANNELS);
+    checkMetaData(_sampleRateKeyIndex, ANDROID_KEY_PCMFORMAT_SAMPLERATE);
+    checkMetaData(_bitsPerSampleKeyIndex, ANDROID_KEY_PCMFORMAT_BITSPERSAMPLE);
+    checkMetaData(_containerSizeKeyIndex, ANDROID_KEY_PCMFORMAT_CONTAINERSIZE);
+    checkMetaData(_channelMaskKeyIndex, ANDROID_KEY_PCMFORMAT_CHANNELMASK);
+    checkMetaData(_endiannessKeyIndex, ANDROID_KEY_PCMFORMAT_ENDIANNESS);
 
     /* ------------------------------------------------------ */
     /* Start decoding */
@@ -334,8 +355,110 @@ void AudioDecoder::start() {
     /* Destroy the AudioPlayer object */
     (*player)->Destroy(player);
 
+    LOGD("After destroy player ...");
+
     free(_pcmMetaData);
     _pcmMetaData = NULL;
+
+    _result.numFrames = _result.pcmBuffer->size() / _result.numChannels / (_result.bitsPerSample / 8);
+
+    std::string info = _result.toString();
+    LOGD("original audio info: %s, total size: %d", info.c_str(), _result.pcmBuffer->size());
+
+    resample();
+}
+
+void AudioDecoder::resample()
+{
+    auto r = _result;
+    BufferProvider provider(r.pcmBuffer->data(), r.numFrames, r.pcmBuffer->size() / r.numFrames);
+
+    const int outFrameRate = _sampleRate;
+    int output_channels = 2;
+    size_t output_framesize = output_channels * sizeof(int32_t);
+    size_t output_frames = ((int64_t) r.numFrames * outFrameRate) / r.sampleRate;
+    size_t output_size = output_frames * output_framesize;
+    void* output_vaddr = malloc(output_size);
+
+    auto resampler = AudioResampler::create(AUDIO_FORMAT_PCM_16_BIT, r.numChannels, outFrameRate, AudioResampler::MED_QUALITY);
+    resampler->setSampleRate(r.sampleRate);
+    resampler->setVolume(AudioResampler::UNITY_GAIN_FLOAT, AudioResampler::UNITY_GAIN_FLOAT);
+
+    memset(output_vaddr, 0, output_size);
+
+    LOGD("resample() %zu output frames", output_frames);
+
+    std::vector<int> Ovalues;
+
+    if (Ovalues.empty()) {
+        Ovalues.push_back(output_frames);
+    }
+    for (size_t i = 0, j = 0; i < output_frames; ) {
+        size_t thisFrames = Ovalues[j++];
+        if (j >= Ovalues.size()) {
+            j = 0;
+        }
+        if (thisFrames == 0 || thisFrames > output_frames - i) {
+            thisFrames = output_frames - i;
+        }
+        int outFrames = resampler->resample((int*) output_vaddr + output_channels*i, thisFrames, &provider);
+        LOGD("outFrames: %d", outFrames);
+        i += thisFrames;
+    }
+
+    LOGD("resample() complete");
+
+    resampler->reset();
+
+    LOGD("reset() complete");
+
+    delete resampler;
+    resampler = NULL;
+
+//    int outFrames = resampler->resample((int*)output_vaddr, output_frames, &provider);
+
+    // mono takes left channel only (out of stereo output pair)
+    // stereo and multichannel preserve all channels.
+
+    int channels = r.numChannels;
+    int32_t* out = (int32_t*) output_vaddr;
+    int16_t* convert = (int16_t*) malloc(output_frames * channels * sizeof(int16_t));
+
+    const int volumeShift = 12; // shift requirement for Q4.27 to Q.15
+    // round to half towards zero and saturate at int16 (non-dithered)
+    const int roundVal = (1<<(volumeShift-1)) - 1; // volumePrecision > 0
+
+    for (size_t i = 0; i < output_frames; i++) {
+        for (int j = 0; j < channels; j++) {
+            int32_t s = out[i * output_channels + j] + roundVal; // add offset here
+            if (s < 0) {
+                s = (s + 1) >> volumeShift; // round to 0
+                if (s < -32768) {
+                    s = -32768;
+                }
+            } else {
+                s = s >> volumeShift;
+                if (s > 32767) {
+                    s = 32767;
+                }
+            }
+            convert[i * channels + j] = int16_t(s);
+        }
+    }
+
+    // Reset result
+    _result.numFrames = output_frames;
+    _result.sampleRate = outFrameRate;
+
+    auto buffer = std::make_shared<std::vector<char>>();
+    buffer->reserve(_result.numFrames * _result.bitsPerSample / 8);
+    buffer->insert(buffer->end(), (char*)convert, (char*)convert + output_frames * channels * sizeof(int16_t));
+    _result.pcmBuffer = buffer;
+
+    LOGD("pcm buffer size: %d", _result.pcmBuffer->size());
+
+    free(convert);
+    free(output_vaddr);
 }
 
 //-----------------------------------------------------------------
@@ -461,11 +584,27 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
     //         pcmMetaData->encoding == SL_CHARACTERENCODING_BINARY
     //         pcmMetaData->size == sizeof(SLuint32)
     //       but the call was successful for the PCM format keys, so those conditions are implied
-    LOGD("sample rate = %dHz, ", *((SLuint32*)_pcmMetaData->data));
+
     _result.sampleRate = *((SLuint32*)_pcmMetaData->data);
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _channelCountKeyIndex,
-                                       PCM_METADATA_VALUE_SIZE, _pcmMetaData);  ExitOnError(res);
-    LOGD(" channel count = %d\n", *((SLuint32*)_pcmMetaData->data));
-    _result.channelCount = *((SLuint32*)_pcmMetaData->data);
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _numChannelsKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    ExitOnError(res);
+    _result.numChannels = *((SLuint32*)_pcmMetaData->data);
+
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _bitsPerSampleKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    ExitOnError(res);
+    _result.bitsPerSample = *((SLuint32*)_pcmMetaData->data);
+
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _containerSizeKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    ExitOnError(res);
+    _result.containerSize = *((SLuint32*)_pcmMetaData->data);
+
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _channelMaskKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    ExitOnError(res);
+    _result.channelMask = *((SLuint32*)_pcmMetaData->data);
+
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _endiannessKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    ExitOnError(res);
+    _result.endianness = *((SLuint32*)_pcmMetaData->data);
+
     _formatQueried = true;
 }
