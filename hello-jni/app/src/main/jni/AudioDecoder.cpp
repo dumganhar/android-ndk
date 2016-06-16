@@ -538,7 +538,7 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
     //  synchronize it with some other event, as the OpenSL ES framework will block until the
     //  buffer queue callback return to proceed with the decoding.
 
-#if 1
+#if 0
     /* Example: buffer queue state display */
     SLAndroidSimpleBufferQueueState decQueueState;
     ExitOnError( (*queueItf)->GetState(queueItf, &decQueueState) );
