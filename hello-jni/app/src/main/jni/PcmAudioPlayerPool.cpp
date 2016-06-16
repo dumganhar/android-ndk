@@ -3,15 +3,15 @@
 //
 
 #include <android/log.h>
-#include "AudioPlayerPool.h"
+#include "PcmAudioPlayerPool.h"
 
 #define LOG_TAG "AudioPlayerPool"
 #define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
-std::vector<AudioPlayer*> AudioPlayerPool::_audioPlayerPool;
+std::vector<PcmAudioPlayer*> PcmAudioPlayerPool::_audioPlayerPool;
 
-bool AudioPlayerPool::init(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames)
+bool PcmAudioPlayerPool::init(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames)
 {
     _audioPlayerPool.reserve(AUDIO_PLAYER_POOL_SIZE);
 
@@ -23,13 +23,13 @@ bool AudioPlayerPool::init(SLEngineItf engineItf, SLObjectItf outputMixObject, i
             numChannels = 2;
         }
 
-        auto player = new AudioPlayer(engineItf, outputMixObject);
+        auto player = new PcmAudioPlayer(engineItf, outputMixObject);
         if (!player->initForPlayPcmData(numChannels, deviceSampleRate, deviceBufferSizeInFrames * numChannels * 2)) {
-            LOGE("AudioPlayer pool only supports size with %d", i-1);
+            LOGE("UrlAudioPlayer pool only supports size with %d", i-1);
             delete player;
             break;
         }
-        LOGD("Insert a AudioPlayer (%d, %p, %d) to pool ...", i, player, numChannels);
+        LOGD("Insert a UrlAudioPlayer (%d, %p, %d) to pool ...", i, player, numChannels);
         player->setOwnedByPool(true);
         _audioPlayerPool.push_back(player);
     }
@@ -37,26 +37,26 @@ bool AudioPlayerPool::init(SLEngineItf engineItf, SLObjectItf outputMixObject, i
     return true;
 }
 
-void AudioPlayerPool::destroy() {
-    LOGD("AudioPlayerPool::destroy begin ...");
+void PcmAudioPlayerPool::destroy() {
+    LOGD("PcmAudioPlayerPool::destroy begin ...");
     int i = 0;
     for (const auto& player : _audioPlayerPool)
     {
-        LOGD("delete AudioPlayer (%d, %p) ...", i, player);
+        LOGD("delete UrlAudioPlayer (%d, %p) ...", i, player);
         delete player;
         ++i;
     }
     _audioPlayerPool.clear();
-    LOGD("AudioPlayerPool::destroy end ...");
+    LOGD("PcmAudioPlayerPool::destroy end ...");
 }
 
-AudioPlayer *AudioPlayerPool::findAvailableAudioPlayer(int numChannels) {
+PcmAudioPlayer *PcmAudioPlayerPool::findAvailablePlayer(int numChannels) {
     int i = 0;
     for (const auto& player : _audioPlayerPool)
     {
         if (!player->isPlaying() && player->getChannelCount() == numChannels)
         {
-            LOGD("AudioPlayer %d is working ...", i);
+            LOGD("UrlAudioPlayer %d is working ...", i);
             return player;
         }
         ++i;

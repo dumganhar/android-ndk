@@ -352,7 +352,7 @@ void AudioDecoder::start() {
     ExitOnError(result);
     LOGD("Stopped decoding\n");
 
-    /* Destroy the AudioPlayer object */
+    /* Destroy the UrlAudioPlayer object */
     (*player)->Destroy(player);
 
     LOGD("After destroy player ...");

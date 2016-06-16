@@ -8,10 +8,10 @@
 #include "wav.h"
 #include "audio.h"
 #include "AudioDecoder.h"
-#include "AudioPlayer.h"
+#include "UrlAudioPlayer.h"
 #include "AudioResampler.h"
 #include "BufferProvider.h"
-#include "AudioPlayerPool.h"
+#include "PcmAudioPlayerPool.h"
 
 #include <android/log.h>
 #include <stdio.h>
@@ -61,7 +61,7 @@ AUDIO_FUNC(jniCreate)(JNIEnv *env, jclass clazz, jint sampleRate, jint bufferSiz
     res = (*engine.engine)->CreateOutputMix(engine.engine, &output.object, 0, NULL, NULL);
     res = (*output.object)->Realize(output.object, SL_BOOLEAN_FALSE);
 
-    AudioPlayerPool::init(engine.engine, output.object, sampleRate, bufferSizeInFrames);
+    PcmAudioPlayerPool::init(engine.engine, output.object, sampleRate, bufferSizeInFrames);
 
     return JNI_TRUE;
 }
@@ -70,7 +70,7 @@ JNIEXPORT
 void
 JNICALL
 AUDIO_FUNC(jniShutdown)(JNIEnv *env, jclass clazz) {
-    AudioPlayerPool::destroy();
+    PcmAudioPlayerPool::destroy();
 
     destroyOutputMix(&output);
     destroyEngine(&engine);
@@ -108,7 +108,6 @@ JNIEXPORT
 jboolean
 JNICALL
 AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_state) {
-//    return playSample(index, play_state);
 
     if (__fileIndex > 28) {
         __fileIndex = 0;
@@ -134,45 +133,26 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
         delete decoder;
     }
 
-    auto player = AudioPlayerPool::findAvailableAudioPlayer(pcmData.numChannels);
+    auto player = PcmAudioPlayerPool::findAvailablePlayer(pcmData.numChannels);
     if (player != NULL)
     {
-        player->playWithPcmData(pcmData, 1, false);
+        player->play(pcmData, 1, false);
     }
 
-//    usleep(300 * 1000);
-//    player->stop();
+    auto player1 = new UrlAudioPlayer(engine.engine, output.object);
 
-//    usleep(100 * 1000);
+    auto fdGetter = [](const std::string& url, off_t* start, off_t* length) -> int{
+        LOGD("in the callback of fdgetter ...");
+        int ret = 0;
+        auto asset = AAssetManager_open(__assetManager, url.c_str(), AASSET_MODE_UNKNOWN);
+        // open asset as file descriptor
+        ret = AAsset_openFileDescriptor(asset, start, length);
+        AAsset_close(asset);
 
-//    delete player;
+        return ret;
+    };
 
-//    auto player1 = new AudioPlayer(engine.engine, output.object);
-//    // test play with url
-//
-//    auto fdGetter = [](const std::string& url, off_t* start, off_t* length) -> int{
-//        LOGD("in the callback of fdgetter ...");
-//        int ret = 0;
-//        auto asset = AAssetManager_open(__assetManager, url.c_str(), AASSET_MODE_UNKNOWN);
-//        // open asset as file descriptor
-//        ret = AAsset_openFileDescriptor(asset, start, length);
-//        AAsset_close(asset);
-//
-//        return ret;
-//    };
-//
-////    player1->initWithUrl("01.mp3", 1, false, fdGetter);
-////    player1->play();
-//
-//    // test play with pcm data
-//    auto decoder = new AudioDecoder(engine.engine, __currentFilePath);
-//    decoder->start();
-//
-//    auto player2 = new AudioPlayer(engine.engine, output.object);
-//    player2->initWithPcmData(decoder->getResult(), 1, false);
-//    player2->play();
-//
-//    delete decoder;
+    player1->play(__currentFilePath, 1, false, fdGetter);
 
     return 1;
 }

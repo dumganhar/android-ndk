@@ -50,14 +50,14 @@ How to examine the output with Audacity:
 #include "AudioDecoder.h"
 
 #include "audio.h"
-#include "AudioPlayer.h"
+#include "UrlAudioPlayer.h"
 
 #define LOG_TAG "cjh"
 #define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
 /* Explicitly requesting SL_IID_ANDROIDSIMPLEBUFFERQUEUE and SL_IID_PREFETCHSTATUS
- * on the AudioPlayer object for decoding, SL_IID_METADATAEXTRACTION for retrieving the
+ * on the UrlAudioPlayer object for decoding, SL_IID_METADATAEXTRACTION for retrieving the
  * format of the decoded audio */
 #define NUM_EXPLICIT_INTERFACES_FOR_PLAYER 3
 
@@ -549,7 +549,7 @@ void TestDecToBuffQueue( SLObjectItf sl, const char* path)
     ExitOnError(result);
     LOGD("Stopped decoding\n");
 
-    /* Destroy the AudioPlayer object */
+    /* Destroy the UrlAudioPlayer object */
     (*player)->Destroy(player);
 
     fclose(gFp);
@@ -593,7 +593,7 @@ int sles_main()
 
 //    LOGD("OpenSL ES test %s: exercises SLPlayItf and SLAndroidSimpleBufferQueueItf ",
 //            argv[0]);
-//    LOGD("on an AudioPlayer object to decode a URI to PCM\n");
+//    LOGD("on an UrlAudioPlayer object to decode a URI to PCM\n");
 //
 //    if (argc != 2) {
 //        LOGD("Usage: \t%s source_file\n", argv[0]);
@@ -637,7 +637,7 @@ int sles_main()
 //
 ////    playPcmBuffer(r.pcmBuffer->data(), r.pcmBuffer->size(), r.channelCount, r.sampleRate);
 //
-//    auto player = new AudioPlayer(engine, outputMix, r);
+//    auto player = new UrlAudioPlayer(engine, outputMix, r);
 //    player->play();
 //
 ////    delete player;

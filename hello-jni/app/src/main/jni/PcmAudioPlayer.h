@@ -2,57 +2,59 @@
 // Created by James Chen on 6/13/16.
 //
 
-#ifndef HELLO_JNI_AUDIOPLAYER_H
-#define HELLO_JNI_AUDIOPLAYER_H
+#ifndef PCMAUDIOPLAYER_H
+#define PCMAUDIOPLAYER_H
 
 #include "AudioDecoder.h"
 
 #include <mutex>
 #include <condition_variable>
 
-#define AUDIO_PLAYER_BUFFER_COUNT (2)
 
-class AudioPlayer {
+class PcmAudioPlayer
+{
 public:
-    AudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
-    virtual ~AudioPlayer();
+    virtual ~PcmAudioPlayer();
 
-    bool initForPlayPcmData(int numChannels, int sampleRate, int bufferSizeInBytes);
+    int play(const AudioDecoder::Result& decResult, float volume, bool loop);
 
-    typedef std::function<int(const std::string&, off_t* start, off_t* length)> FdGetterCallback;
-    bool initWithUrl(const std::string& url, float volume, bool loop, const FdGetterCallback& fdGetter);
-
-    void play();
-    void playWithPcmData(const AudioDecoder::Result& decResult, float volume, bool loop);
-    bool isPlaying();
+    inline bool isPlaying() { return _isPlaying; };
     void pause();
     void resume();
     void stop();
+    void setVolume(float volume);
 
     inline int getChannelCount() { return _numChannels; };
     inline int getSampleRate() { return _sampleRate; };
 
 private:
+    PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
+    bool initForPlayPcmData(int numChannels, int sampleRate, int bufferSizeInBytes);
+
+    void wait();
+    void wakeup();
+    void enqueue();
+
     void samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq);
-    void setOwnedByAudioPlayerPool(bool isOwnedByPool);
+
+    inline void setOwnedByPool(bool isOwnedByPool) { _isOwnedByPool = isOwnedByPool; };
+    inline bool isOwnedByPool() { return _isOwnedByPool; };
+    inline void setPlaying(bool isPlaying) { _isPlaying = isPlaying; };
+
 private:
     SLEngineItf _engineItf;
     SLObjectItf _outputMixObj;
-    int _assetFd;
 
     AudioDecoder::Result _decResult;
 
     SLObjectItf _playObj;
     SLPlayItf _playItf;
-    SLSeekItf _seekItf;
     SLVolumeItf _volumeItf;
     SLAndroidSimpleBufferQueueItf _bufferQueueItf;
 
-    //FIXME: only used for pcm data player
     int _numChannels;
     int _sampleRate;
     int _bufferSizeInBytes;
-    //
 
     float _volume;
     bool _isLoop;
@@ -63,12 +65,10 @@ private:
     std::mutex _enqueueMutex;
     std::condition_variable _enqueueCond;
 
-    char _silenceData[4096];
-
     int _currentBufferIndex;
 
-    friend class SLAudioPlayerCallbackProxy;
-    friend class AudioPlayerPool;
+    friend class SLPcmAudioPlayerCallbackProxy;
+    friend class PcmAudioPlayerPool;
 };
 
 

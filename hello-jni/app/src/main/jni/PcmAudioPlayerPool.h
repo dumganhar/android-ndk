@@ -5,23 +5,22 @@
 #ifndef HELLO_JNI_AUDIOPLAYERPOOL_H
 #define HELLO_JNI_AUDIOPLAYERPOOL_H
 
-#include "AudioPlayer.h"
+#include "PcmAudioPlayer.h"
 
 #include <vector>
 
 #define AUDIO_PLAYER_POOL_SIZE (10)
 
-class AudioPlayerPool
+class PcmAudioPlayerPool
 {
 public:
     static bool init(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames);
     static void destroy();
 
-    // Only supports player which plays pcm data
-    static AudioPlayer* findAvailableAudioPlayer(int numChannels);
+    static PcmAudioPlayer* findAvailablePlayer(int numChannels);
 
 private:
-    static std::vector<AudioPlayer*> _audioPlayerPool;
+    static std::vector<PcmAudioPlayer*> _audioPlayerPool;
 };
 
 

@@ -14,7 +14,7 @@
 
 
 /* Explicitly requesting SL_IID_ANDROIDSIMPLEBUFFERQUEUE and SL_IID_PREFETCHSTATUS
-* on the AudioPlayer object for decoding, SL_IID_METADATAEXTRACTION for retrieving the
+* on the UrlAudioPlayer object for decoding, SL_IID_METADATAEXTRACTION for retrieving the
 * format of the decoded audio */
 #define NUM_EXPLICIT_INTERFACES_FOR_PLAYER 3
 
