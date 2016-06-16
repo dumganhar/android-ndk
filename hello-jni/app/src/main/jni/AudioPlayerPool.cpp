@@ -29,8 +29,8 @@ bool AudioPlayerPool::init(SLEngineItf engineItf, SLObjectItf outputMixObject, i
             delete player;
             break;
         }
-        LOGD("Insert a AudioPlayer (%d, %p) to pool ...", i, player);
-        player->setOwnedByAudioPlayerPool(true);
+        LOGD("Insert a AudioPlayer (%d, %p, %d) to pool ...", i, player, numChannels);
+        player->setOwnedByPool(true);
         _audioPlayerPool.push_back(player);
     }
 
@@ -61,5 +61,6 @@ AudioPlayer *AudioPlayerPool::findAvailableAudioPlayer(int numChannels) {
         }
         ++i;
     }
+    LOGE("Could not find available audio player with %d channels!", numChannels);
     return nullptr;
 }

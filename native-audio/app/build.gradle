@@ -16,9 +16,7 @@ model {
             toolchain = 'clang'
             CFlags.add('-std=c99')
             ldLibs.addAll(['android','OpenSLES', 'log'])
-            abiFilters.addAll(['armeabi', 'armeabi-v7a', 'arm64-v8a',
-                               'x86', 'x86_64',
-                               'mips', 'mips64'])
+            abiFilters.addAll(['armeabi-v7a', "arm64-v8a"])
         }
         buildTypes {
             release {
