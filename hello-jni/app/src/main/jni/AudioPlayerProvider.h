@@ -21,29 +21,55 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-#ifndef COCOS_AUDIOPLAYERPOOL_H
-#define COCOS_AUDIOPLAYERPOOL_H
 
+#ifndef COCOS_AUDIOPLAYERPROVIDER_H
+#define COCOS_AUDIOPLAYERPROVIDER_H
+
+#include "IAudioPlayer.h"
 #include "OpenSLHelper.h"
+#include "PcmData.h"
 
-#include <vector>
+#include <unordered_map>
 
-#define AUDIO_PLAYER_POOL_SIZE (10)
+// Manage PcmAudioPlayerPool & UrlAudioPlayer
 
-class PcmAudioPlayer;
+class PcmAudioPlayerPool;
 
-class PcmAudioPlayerPool
+class AudioPlayerProvider
 {
-private:
-    PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames);
-    virtual ~PcmAudioPlayerPool();
+public:
+    AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int bufferSizeInFrames, const FdGetterCallback& fdGetterCallback);
+    virtual ~AudioPlayerProvider();
 
-    PcmAudioPlayer* findAvailablePlayer(int numChannels);
+    IAudioPlayer* getAudioPlayer(const std::string& audioFilePath);
+    PcmData preloadEffect(const std::string& audioFilePath);
 
 private:
-    std::vector<PcmAudioPlayer*> _audioPlayerPool;
-    friend class AudioPlayerProvider;
+    struct AudioFileInfo
+    {
+        int assetFd;
+        off_t start;
+        off_t length;
+
+        AudioFileInfo()
+        : assetFd(0)
+        , start(0)
+        , length(0)
+        {};
+    };
+
+    AudioFileInfo getFileInfo(const std::string& audioFilePath);
+    bool isSmallFile(long fileSize);
+private:
+    SLEngineItf _engineItf;
+    SLObjectItf _outputMixObject;
+    int _deviceSampleRate;
+    int _bufferSizeInFrames;
+    FdGetterCallback _fdGetterCallback;
+    std::unordered_map<std::string, PcmData> _pcmCache;
+
+    PcmAudioPlayerPool* _pcmAudioPlayerPool;
 };
 
 
-#endif //COCOS_AUDIOPLAYERPOOL_H
+#endif //COCOS_AUDIOPLAYERPROVIDER_H

@@ -21,29 +21,46 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-#ifndef COCOS_AUDIOPLAYERPOOL_H
-#define COCOS_AUDIOPLAYERPOOL_H
 
-#include "OpenSLHelper.h"
+#ifndef COCOS_IAUDIOPLAYER_H
+#define COCOS_IAUDIOPLAYER_H
 
-#include <vector>
+#include <functional>
 
-#define AUDIO_PLAYER_POOL_SIZE (10)
-
-class PcmAudioPlayer;
-
-class PcmAudioPlayerPool
+class IAudioPlayer
 {
-private:
-    PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames);
-    virtual ~PcmAudioPlayerPool();
+public:
+    virtual ~IAudioPlayer() {};
 
-    PcmAudioPlayer* findAvailablePlayer(int numChannels);
+    virtual int getId() = 0;
+    virtual void setId(int id) = 0;
 
-private:
-    std::vector<PcmAudioPlayer*> _audioPlayerPool;
-    friend class AudioPlayerProvider;
+    virtual std::string getUrl() = 0;
+
+    virtual void play() = 0;
+    virtual bool isPlaying() = 0;
+
+    virtual void pause() = 0;
+    virtual void resume() = 0;
+    virtual void stop() = 0;
+    virtual void rewind() = 0;
+
+    virtual void setVolume(float volume) = 0;
+    virtual float getVolume() = 0;
+
+    virtual void setLoop(bool isLoop) = 0;
+    virtual bool isLoop() = 0;
+
+    virtual float getDuration() = 0;
+    virtual float getPosition() = 0;
+    virtual bool setPosition(float pos) = 0;
+
+    typedef std::function<void(IAudioPlayer*, void*)> PlayOverCallback;
+
+    // @note: Play over callback will be invoked in sub thread
+    virtual void setPlayOverCallback(const PlayOverCallback& playOverCallback, void* context) = 0;
+
+    virtual bool isOwnedByPool() = 0;
 };
 
-
-#endif //COCOS_AUDIOPLAYERPOOL_H
+#endif //COCOS_IAUDIOPLAYER_H

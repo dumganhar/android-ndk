@@ -1,67 +1,71 @@
-//
-// Created by James Chen on 6/13/16.
-//
+/****************************************************************************
+Copyright (c) 2016 Chukong Technologies Inc.
+
+http://www.cocos2d-x.org
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+****************************************************************************/
 
 #include "UrlAudioPlayer.h"
 
 #include <android/log.h>
 #include <math.h>
 #include <unistd.h>
-#include <SLES/OpenSLES_Android.h>
 
-#define LOG_TAG "AudioPlayer"
+#define LOG_TAG "UrlAudioPlayer"
 #define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
-
-#define DESTROY(OBJ)    \
-    if ((OBJ) != NULL) { \
-        (*(OBJ))->Destroy(OBJ); \
-        (OBJ) = NULL; \
-    }
-
-#define CHECK_SL_RESULT(r, line) \
-    if (r != SL_RESULT_SUCCESS) {\
-        LOGE("SL result %d is wrong, line: %d", r, line); \
-        return false; \
-    }
-
-//FIXME: a lot of return values of SL functions need to be check
-
-#define AUDIO_PLAYER_BUFFER_COUNT (2)
 
 UrlAudioPlayer::UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject)
         : _engineItf(engineItf)
         , _outputMixObj(outputMixObject)
+        , _id(-1)
         , _assetFd(0)
-        , _playObj(NULL)
-        , _playItf(NULL)
-        , _seekItf(NULL)
-        , _volumeItf(NULL)
+        , _playObj(nullptr)
+        , _playItf(nullptr)
+        , _seekItf(nullptr)
+        , _volumeItf(nullptr)
         , _isLoop(false)
         , _volume(0.0f)
         , _duration(0.0f)
         , _isPlaying(false)
         , _isDestroyed(false)
-        , _playOverCb(nullptr)
+        , _playOverCallback(nullptr)
+        , _playOverCallbackContext(nullptr)
 {
 }
 
 UrlAudioPlayer::~UrlAudioPlayer()
 {
     LOGD("In the destructor of UrlAudioPlayer %p", this);
-    LOGD("UrlAudioPlayeryer 01");
     _isDestroyed = true;
 
-    LOGD("UrlAudioPlayeryer 02");
-    DESTROY(_playObj);
-    LOGD("UrlAudioPlayeryer 03");
+    LOGD("~UrlAudioPlayer() 01");
+    SL_DESTROY_OBJ(_playObj);
+    LOGD("~UrlAudioPlayer() 02");
     if(_assetFd > 0)
     {
-        LOGD("UrlAudioPlayeryer 04");
+        LOGD("~UrlAudioPlayer() 03");
         close(_assetFd);
         _assetFd = 0;
     }
-    LOGD("UrlAudioPlayeryer end");
+    LOGD("~UrlAudioPlayer() end");
 }
 
 class SLUrlAudioPlayerCallbackProxy {
@@ -78,143 +82,70 @@ void UrlAudioPlayer::playEventCallback(SLPlayItf caller, SLuint32 playEvent)
     //Note that it's on sub thread, please don't invoke OpenSLES API on sub thread
     if (playEvent == SL_PLAYEVENT_HEADATEND) {
         //fix issue#8965:AudioEngine can't looping audio on Android 2.3.x
-        if (_isLoop)
+        if (isLoop())
         {
             //FIXME: Don't invoke OpenSLES API here
-            (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+            play();
         }
-        else {
-            if (_playOverCb != nullptr)
+        else
+        {
+            setPlaying(false);
+            if (_playOverCallback != nullptr)
             {
-                _playOverCb();
+                LOGD("(%s) play over, invoke callback ...", _url.c_str());
+                _playOverCallback(this, _playOverCallbackContext);
             }
         }
     }
 }
 
-void UrlAudioPlayer::setPlayOverCallback(const std::function<void()>& playOverCb)
+void UrlAudioPlayer::setPlayOverCallback(const PlayOverCallback& playOverCallback, void* context)
 {
-    _playOverCb = playOverCb;
+    _playOverCallback = playOverCallback;
+    _playOverCallbackContext = context;
 }
 
 void UrlAudioPlayer::stop()
 {
-    (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
+    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
+    SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::stop failed");
 }
 
 void UrlAudioPlayer::pause()
 {
-    (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PAUSED);
+    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PAUSED);
+    SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::pause failed");
 }
 
 void UrlAudioPlayer::resume()
 {
-    (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+    SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::resume failed");
 }
 
-int UrlAudioPlayer::play(const std::string& url, float volume, bool loop, const FdGetterCallback& fdGetter)
+void UrlAudioPlayer::play()
 {
-    int ret = -1;
-
-    do
-    {
-        SLDataSource audioSrc;
-
-        SLDataLocator_AndroidFD loc_fd;
-        SLDataLocator_URI loc_uri;
-
-        SLDataFormat_MIME formatMime = {SL_DATAFORMAT_MIME, NULL, SL_CONTAINERTYPE_UNSPECIFIED};
-        audioSrc.pFormat = &formatMime;
-
-        if (url[0] != '/') {
-            off_t start = 0, length = 0;
-            std::string relativePath;
-            size_t position = url.find("assets/");
-
-            if (0 == position) {
-                // "assets/" is at the beginning of the path and we don't want it
-                relativePath = url.substr(strlen("assets/"));
-            } else {
-                relativePath = url;
-            }
-
-            _assetFd = fdGetter(relativePath, &start, &length);
-
-            if (_assetFd <= 0) {
-                LOGE("Failed to open file descriptor for '%s'", url.c_str());
-                break;
-            }
-
-            // configure audio source
-            loc_fd = {SL_DATALOCATOR_ANDROIDFD, _assetFd, start, length};
-
-            audioSrc.pLocator = &loc_fd;
-        }
-        else{
-            loc_uri = {SL_DATALOCATOR_URI , (SLchar*)url.c_str()};
-            audioSrc.pLocator = &loc_uri;
-        }
-
-        // configure audio sink
-        SLDataLocator_OutputMix loc_outmix = {SL_DATALOCATOR_OUTPUTMIX, _outputMixObj};
-        SLDataSink audioSnk = {&loc_outmix, NULL};
-
-        // create audio player
-        const SLInterfaceID ids[3] = {SL_IID_SEEK, SL_IID_PREFETCHSTATUS, SL_IID_VOLUME};
-        const SLboolean req[3] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
-        auto result = (*_engineItf)->CreateAudioPlayer(_engineItf, &_playObj, &audioSrc, &audioSnk, 3, ids, req);
-        if(SL_RESULT_SUCCESS != result){ LOGE("create audio player fail"); break; }
-
-        // realize the player
-        result = (*_playObj)->Realize(_playObj, SL_BOOLEAN_FALSE);
-        if(SL_RESULT_SUCCESS != result){ LOGE("realize the player fail"); break; }
-
-        // get the play interface
-        result = (*_playObj)->GetInterface(_playObj, SL_IID_PLAY, &_playItf);
-        if(SL_RESULT_SUCCESS != result){ LOGE("get the play interface fail"); break; }
-
-        // get the seek interface
-        result = (*_playObj)->GetInterface(_playObj, SL_IID_SEEK, &_seekItf);
-        if(SL_RESULT_SUCCESS != result){ LOGE("get the seek interface fail"); break; }
-
-        // get the volume interface
-        result = (*_playObj)->GetInterface(_playObj, SL_IID_VOLUME, &_volumeItf);
-        if(SL_RESULT_SUCCESS != result){ LOGE("get the volume interface fail"); break; }
-
-        _isLoop = loop;
-        if (_isLoop){
-            (*_seekItf)->SetLoop(_seekItf, SL_BOOLEAN_TRUE, 0, SL_TIME_UNKNOWN);
-        }
-
-        (*_playItf)->RegisterCallback(_playItf, SLUrlAudioPlayerCallbackProxy::playEventCallback, this);
-        (*_playItf)->SetCallbackEventsMask(_playItf, SL_PLAYEVENT_HEADATEND);
-
-        setVolume(volume);
-        result = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
-        if(SL_RESULT_SUCCESS != result){ LOGE("SetPlayState fail"); break; }
-
-        ret = 0;
-    } while (0);
-
-    return ret;
+    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+    SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::play failed");
+    setPlaying(true);
 }
 
 void UrlAudioPlayer::setVolume(float volume)
 {
+    _volume = volume;
     int dbVolume = 2000 * log10(volume);
     if(dbVolume < SL_MILLIBEL_MIN){
         dbVolume = SL_MILLIBEL_MIN;
     }
-    SLresult result = (*_volumeItf)->SetVolumeLevel(_volumeItf, dbVolume);
-    if(SL_RESULT_SUCCESS != result){
-        LOGD("%s error:%lu", __func__, result);
-    }
+    SLresult r = (*_volumeItf)->SetVolumeLevel(_volumeItf, dbVolume);
+    SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::setVolume %d failed", dbVolume);
 }
 
 float UrlAudioPlayer::getDuration()
 {
     SLmillisecond duration;
-    auto result = (*_playItf)->GetDuration(_playItf, &duration);
+    SLresult r = (*_playItf)->GetDuration(_playItf, &duration);
+    SL_RETURN_VAL_IF_FAILED(r, 0.0f, "UrlAudioPlayer::getDuration failed");
 
     if (duration == SL_TIME_UNKNOWN)
     {
@@ -222,7 +153,7 @@ float UrlAudioPlayer::getDuration()
     }
     else
     {
-        _duration = duration / 1000.0;
+        _duration = duration / 1000.0f;
 
         if (_duration <= 0)
         {
@@ -234,15 +165,107 @@ float UrlAudioPlayer::getDuration()
 
 float UrlAudioPlayer::getPosition() {
     SLmillisecond millisecond;
-    auto result = (*_playItf)->GetPosition(_playItf, &millisecond);
+    SLresult r = (*_playItf)->GetPosition(_playItf, &millisecond);
+    SL_RETURN_VAL_IF_FAILED(r, 0.0f, "UrlAudioPlayer::getPosition failed");
     return millisecond / 1000.0f;
 }
 
-void UrlAudioPlayer::setPosition(float pos)
+bool UrlAudioPlayer::setPosition(float pos)
 {
     SLmillisecond millisecond = 1000.0f * pos;
-    auto result = (*_seekItf)->SetPosition(_seekItf, millisecond, SL_SEEKMODE_ACCURATE);
-    if(SL_RESULT_SUCCESS != result){
-        return;
+    SLresult r = (*_seekItf)->SetPosition(_seekItf, millisecond, SL_SEEKMODE_ACCURATE);
+    SL_RETURN_VAL_IF_FAILED(r, false, "UrlAudioPlayer::setPosition %f failed", pos);
+    return true;
+}
+
+bool UrlAudioPlayer::prepare(const std::string& url, SLuint32 locatorType, int assetFd, int start, int length)
+{
+    _url = url;
+    _assetFd = assetFd;
+
+    LOGD("UrlAudioPlayer::prepare: %s", _url.c_str());
+    SLDataSource audioSrc;
+
+    SLDataFormat_MIME formatMime = {SL_DATAFORMAT_MIME, nullptr, SL_CONTAINERTYPE_UNSPECIFIED};
+    audioSrc.pFormat = &formatMime;
+
+    if (locatorType == SL_DATALOCATOR_ANDROIDFD)
+    {
+        SLDataLocator_AndroidFD locFd;
+
+        LOGD("UrlAudioPlayer::prepare, assetFd: %d, start: %d, length: %d", _assetFd, start, length);
+
+        // configure audio source
+        locFd = {SL_DATALOCATOR_ANDROIDFD, _assetFd, start, length};
+
+        audioSrc.pLocator = &locFd;
     }
+    else
+    {
+        SLDataLocator_URI locUri;
+        locUri = {SL_DATALOCATOR_URI, (SLchar *) _url.c_str()};
+        audioSrc.pLocator = &locUri;
+    }
+
+    // configure audio sink
+    SLDataLocator_OutputMix locOutmix = {SL_DATALOCATOR_OUTPUTMIX, _outputMixObj};
+    SLDataSink audioSnk = {&locOutmix, nullptr};
+
+    // create audio player
+    const SLInterfaceID ids[3] = {SL_IID_SEEK, SL_IID_PREFETCHSTATUS, SL_IID_VOLUME};
+    const SLboolean req[3] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
+    SLresult result = (*_engineItf)->CreateAudioPlayer(_engineItf, &_playObj, &audioSrc, &audioSnk, 3, ids, req);
+    SL_RETURN_VAL_IF_FAILED(result, false, "CreateAudioPlayer failed");
+
+    // realize the player
+    result = (*_playObj)->Realize(_playObj, SL_BOOLEAN_FALSE);
+    SL_RETURN_VAL_IF_FAILED(result, false, "Realize failed");
+
+    // get the play interface
+    result = (*_playObj)->GetInterface(_playObj, SL_IID_PLAY, &_playItf);
+    SL_RETURN_VAL_IF_FAILED(result, false, "GetInterface SL_IID_PLAY failed");
+
+    // get the seek interface
+    result = (*_playObj)->GetInterface(_playObj, SL_IID_SEEK, &_seekItf);
+    SL_RETURN_VAL_IF_FAILED(result, false, "GetInterface SL_IID_SEEK failed");
+
+    // get the volume interface
+    result = (*_playObj)->GetInterface(_playObj, SL_IID_VOLUME, &_volumeItf);
+    SL_RETURN_VAL_IF_FAILED(result, false, "GetInterface SL_IID_VOLUME failed");
+
+    result = (*_playItf)->RegisterCallback(_playItf, SLUrlAudioPlayerCallbackProxy::playEventCallback, this);
+    SL_RETURN_VAL_IF_FAILED(result, false, "RegisterCallback failed");
+
+    result = (*_playItf)->SetCallbackEventsMask(_playItf, SL_PLAYEVENT_HEADATEND);
+    SL_RETURN_VAL_IF_FAILED(result, false, "SetCallbackEventsMask SL_PLAYEVENT_HEADATEND failed");
+
+    setVolume(1.0f);
+    pause();
+
+    return true;
+}
+
+void UrlAudioPlayer::rewind()
+{
+    stop();
+    play();
+}
+
+float UrlAudioPlayer::getVolume()
+{
+    return _volume;
+}
+
+void UrlAudioPlayer::setLoop(bool isLoop)
+{
+    _isLoop = isLoop;
+
+    SLboolean loopEnable = _isLoop ? SL_BOOLEAN_TRUE : SL_BOOLEAN_FALSE;
+    SLresult r = (*_seekItf)->SetLoop(_seekItf, loopEnable, 0, SL_TIME_UNKNOWN);
+    SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::setLoop %d failed", _isLoop ? 1 : 0);
+}
+
+bool UrlAudioPlayer::isLoop()
+{
+    return _isLoop;
 }

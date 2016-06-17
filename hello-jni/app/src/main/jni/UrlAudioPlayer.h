@@ -1,43 +1,81 @@
-//
-// Created by James Chen on 6/13/16.
-//
+/****************************************************************************
+Copyright (c) 2016 Chukong Technologies Inc.
 
-#ifndef HELLO_JNI_AUDIOPLAYER_H
-#define HELLO_JNI_AUDIOPLAYER_H
+http://www.cocos2d-x.org
 
-#include <sys/types.h>
-#include <string>
-#include <SLES/OpenSLES.h>
-#include <functional>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-class UrlAudioPlayer {
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+****************************************************************************/
+
+#ifndef COCOS_AUDIOPLAYER_H
+#define COCOS_AUDIOPLAYER_H
+
+#include "IAudioPlayer.h"
+#include "OpenSLHelper.h"
+
+class UrlAudioPlayer : public IAudioPlayer
+{
 public:
-    UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
     virtual ~UrlAudioPlayer();
 
-    typedef std::function<int(const std::string&, off_t* start, off_t* length)> FdGetterCallback;
+    // Override Functions Begin
+    virtual int getId() override { return _id; };
+    virtual void setId(int id) override { _id = id; };
+    virtual std::string getUrl() override { return _url; };
 
-    int play(const std::string& url, float volume, bool loop, const FdGetterCallback& fdGetter);
+    virtual void play() override;
+    virtual bool isPlaying() override { return _isPlaying; };
 
-    inline bool isPlaying() { return _isPlaying; };
-    void pause();
-    void resume();
-    void stop();
-    void setVolume(float volume);
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void rewind() override;
 
-    float getDuration();
-    float getPosition();
-    void setPosition(float pos);
+    virtual void setVolume(float volume) override;
+    virtual float getVolume() override;
 
-    void setPlayOverCallback(const std::function<void()>& playOverCb);
+    virtual void setLoop(bool isLoop) override;
+    virtual bool isLoop() override;
+
+    virtual float getDuration() override;
+    virtual float getPosition() override;
+    virtual bool setPosition(float pos) override;
+
+    virtual void setPlayOverCallback(const PlayOverCallback& playOverCallback, void* context) override;
+
+    virtual bool isOwnedByPool() override { return false; };
+    // Override Functions End
 
 private:
+    UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
+
+    bool prepare(const std::string& url, SLuint32 locatorType, int assetFd, int start, int length);
+
     inline void setPlaying(bool isPlaying) { _isPlaying = isPlaying; };
 
     void playEventCallback(SLPlayItf caller, SLuint32 playEvent);
 private:
     SLEngineItf _engineItf;
     SLObjectItf _outputMixObj;
+
+    int _id;
+    std::string _url;
+
     int _assetFd;
 
     SLObjectItf _playObj;
@@ -51,9 +89,11 @@ private:
     bool _isPlaying;
     bool _isDestroyed;
 
-    std::function<void()> _playOverCb;
+    PlayOverCallback _playOverCallback;
+    void*_playOverCallbackContext;
 
     friend class SLUrlAudioPlayerCallbackProxy;
+    friend class AudioPlayerProvider;
 };
 
 

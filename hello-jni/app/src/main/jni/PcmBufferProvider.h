@@ -21,29 +21,32 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-#ifndef COCOS_AUDIOPLAYERPOOL_H
-#define COCOS_AUDIOPLAYERPOOL_H
 
-#include "OpenSLHelper.h"
+#ifndef COCOS_BUFFERPROVIDER_H
+#define COCOS_BUFFERPROVIDER_H
 
-#include <vector>
+#include "AudioBufferProvider.h"
 
-#define AUDIO_PLAYER_POOL_SIZE (10)
+#include <stddef.h>
+#include <stdio.h>
 
-class PcmAudioPlayer;
+namespace cocos2d {
 
-class PcmAudioPlayerPool
-{
-private:
-    PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames);
-    virtual ~PcmAudioPlayerPool();
+    class PcmBufferProvider : public AudioBufferProvider {
 
-    PcmAudioPlayer* findAvailablePlayer(int numChannels);
+    public:
+        PcmBufferProvider(const void *addr, size_t frames, size_t frameSize);
+        virtual status_t getNextBuffer(Buffer *buffer, int64_t pts = kInvalidPTS);
+        virtual void releaseBuffer(Buffer *buffer);
+        void reset();
 
-private:
-    std::vector<PcmAudioPlayer*> _audioPlayerPool;
-    friend class AudioPlayerProvider;
-};
+    private:
+        const void *mAddr;      // base address
+        const size_t mNumFrames; // total frames
+        const size_t mFrameSize; // size of each frame in bytes
+        size_t mNextFrame; // index of next frame to provide
+        size_t mUnrel;     // number of frames not yet released
+    };
+}
 
-
-#endif //COCOS_AUDIOPLAYERPOOL_H
+#endif //COCOS_BUFFERPROVIDER_H

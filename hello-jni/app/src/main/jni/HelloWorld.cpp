@@ -24,5 +24,4 @@ void HelloWorld::hello() {
 extern "C" void hellocpp() {
     HelloWorld a;
     a.hello();
-    sles_main();
 }

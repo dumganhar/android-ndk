@@ -1,24 +1,14 @@
 #include <sys/types.h>
-#include <assert.h>
-#include <memory.h>
 
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
 
-#include "wav.h"
 #include "audio.h"
-#include "AudioDecoder.h"
-#include "UrlAudioPlayer.h"
-#include "AudioResampler.h"
-#include "BufferProvider.h"
-#include "PcmAudioPlayerPool.h"
 
+#include "AudioPlayerProvider.h"
+
+#include <set>
 #include <android/log.h>
-#include <stdio.h>
-#include <string>
-#include <unordered_map>
-#include <map>
-#include <unistd.h>
 
 #define LOG_TAG "cjh"
 #define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
@@ -26,16 +16,27 @@
 
 #define AUDIO_FUNC(NAME)    Java_com_example_hellojni_HelloJni_##NAME
 
-using namespace cocos2d;
-
 static AudioEngine engine;
 static AudioOutputMix output;
 static AAssetManager* __assetManager;
-static int __deviceSampleRate = -1;
+static AudioPlayerProvider* __audioPlayerProvider = nullptr;
 
-#define MAX_SAMPLES             (32)
+static std::set<IAudioPlayer*> __audioPlayers;
 
-static std::unordered_map<std::string, AudioDecoder::Result> __pcmCache;
+static int __fileIndex = 0;
+static std::string __currentFilePath;
+
+static int fdGetter(const std::string& url, off_t* start, off_t* length)
+{
+    LOGD("in the callback of fdgetter ...");
+    int ret = 0;
+    auto asset = AAssetManager_open(__assetManager, url.c_str(), AASSET_MODE_UNKNOWN);
+    // open asset as file descriptor
+    ret = AAsset_openFileDescriptor(asset, start, length);
+    AAsset_close(asset);
+
+    return ret;
+};
 
 extern "C" {
 
@@ -47,7 +48,6 @@ JNIEXPORT
 jboolean
 JNICALL
 AUDIO_FUNC(jniCreate)(JNIEnv *env, jclass clazz, jint sampleRate, jint bufferSizeInFrames) {
-    __deviceSampleRate = sampleRate;
     SLresult res;
     SLEngineOption EngineOption[] = {
             {(SLuint32) SL_ENGINEOPTION_THREADSAFE, (SLuint32) SL_BOOLEAN_TRUE}
@@ -61,7 +61,7 @@ AUDIO_FUNC(jniCreate)(JNIEnv *env, jclass clazz, jint sampleRate, jint bufferSiz
     res = (*engine.engine)->CreateOutputMix(engine.engine, &output.object, 0, NULL, NULL);
     res = (*output.object)->Realize(output.object, SL_BOOLEAN_FALSE);
 
-    PcmAudioPlayerPool::init(engine.engine, output.object, sampleRate, bufferSizeInFrames);
+    __audioPlayerProvider = new AudioPlayerProvider(engine.engine, output.object, sampleRate, bufferSizeInFrames, fdGetter);
 
     return JNI_TRUE;
 }
@@ -70,12 +70,11 @@ JNIEXPORT
 void
 JNICALL
 AUDIO_FUNC(jniShutdown)(JNIEnv *env, jclass clazz) {
-    PcmAudioPlayerPool::destroy();
+    delete __audioPlayerProvider;
+    __audioPlayerProvider = nullptr;
 
     destroyOutputMix(&output);
     destroyEngine(&engine);
-
-    __pcmCache.clear();
 }
 
 JNIEXPORT
@@ -100,9 +99,21 @@ AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobject
     return JNI_TRUE;
 }
 
+static void clearNotValidUrlAudioPlayers()
+{
+    std::vector<IAudioPlayer*> toRemovePlayers;
+    for (auto player : __audioPlayers)
+    {
+        LOGD("delete player: %p", player);
+        toRemovePlayers.push_back(player);
+        delete player;
+    }
 
-static int __fileIndex = 0;
-static std::string __currentFilePath;
+    for (auto toRemovePlayer : toRemovePlayers)
+    {
+        __audioPlayers.erase(toRemovePlayer);
+    }
+}
 
 JNIEXPORT
 jboolean
@@ -117,43 +128,17 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
     __currentFilePath = filePath;
     ++__fileIndex;
 
-    AudioDecoder::Result pcmData;
+    clearNotValidUrlAudioPlayers();
 
-    auto iter = __pcmCache.find(__currentFilePath);
-    if (iter != __pcmCache.end())
-    {
-        pcmData = iter->second;
+    auto player = __audioPlayerProvider->getAudioPlayer(__currentFilePath);
+    if (player != nullptr) {
+        if (!player->isOwnedByPool()) {
+            __audioPlayers.insert(player);
+        }
+        player->play();
+    } else {
+        LOGE("Oops, player is null ...");
     }
-    else
-    {
-        auto decoder = new AudioDecoder(engine.engine, __currentFilePath, __deviceSampleRate);
-        decoder->start();
-        pcmData = decoder->getResult();
-        __pcmCache.insert(std::make_pair(__currentFilePath, pcmData));
-        delete decoder;
-    }
-
-    auto player = PcmAudioPlayerPool::findAvailablePlayer(pcmData.numChannels);
-    if (player != NULL)
-    {
-        player->play(pcmData, 1, false);
-    }
-
-    auto player1 = new UrlAudioPlayer(engine.engine, output.object);
-
-    auto fdGetter = [](const std::string& url, off_t* start, off_t* length) -> int{
-        LOGD("in the callback of fdgetter ...");
-        int ret = 0;
-        auto asset = AAssetManager_open(__assetManager, url.c_str(), AASSET_MODE_UNKNOWN);
-        // open asset as file descriptor
-        ret = AAsset_openFileDescriptor(asset, start, length);
-        AAsset_close(asset);
-
-        return ret;
-    };
-
-    player1->play(__currentFilePath, 1, false, fdGetter);
-
     return 1;
 }
 
@@ -161,13 +146,7 @@ jboolean loadSample(JNIEnv *env, AAssetManager *amgr, jstring filename) {
     const char *utf8 = env->GetStringUTFChars(filename, NULL);
 //    AAsset *asset = AAssetManager_open(amgr, utf8, AASSET_MODE_UNKNOWN);
 
-    auto decoder = new AudioDecoder(engine.engine, utf8, __deviceSampleRate);
-    decoder->start();
-    LOGD("preload %s", utf8);
-
-    __pcmCache.insert(std::make_pair(utf8, decoder->getResult()));
-
-    delete decoder;
+    __audioPlayerProvider->preloadEffect(utf8);
 
     env->ReleaseStringUTFChars(filename, utf8);
 

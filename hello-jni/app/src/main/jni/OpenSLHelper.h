@@ -21,29 +21,33 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-#ifndef COCOS_AUDIOPLAYERPOOL_H
-#define COCOS_AUDIOPLAYERPOOL_H
 
-#include "OpenSLHelper.h"
+#ifndef COCOS_OPENSLHELPER_H
+#define COCOS_OPENSLHELPER_H
 
-#include <vector>
+#include <SLES/OpenSLES.h>
+#include <SLES/OpenSLES_Android.h>
+#include <functional>
+#include <string>
 
-#define AUDIO_PLAYER_POOL_SIZE (10)
+#define SL_DESTROY_OBJ(OBJ)    \
+    if ((OBJ) != NULL) { \
+        (*(OBJ))->Destroy(OBJ); \
+        (OBJ) = NULL; \
+    }
 
-class PcmAudioPlayer;
+#define SL_RETURN_VAL_IF_FAILED(r, rval, ...) \
+    if (r != SL_RESULT_SUCCESS) {\
+        LOGE("SL result %d is wrong, msg: %s", r, __VA_ARGS__); \
+        return rval; \
+    }
 
-class PcmAudioPlayerPool
-{
-private:
-    PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames);
-    virtual ~PcmAudioPlayerPool();
+#define SL_RETURN_IF_FAILED(r, ...) \
+    if (r != SL_RESULT_SUCCESS) {\
+        LOGE("SL result %d is wrong, msg: %s", r, __VA_ARGS__); \
+        return; \
+    }
 
-    PcmAudioPlayer* findAvailablePlayer(int numChannels);
+typedef std::function<int(const std::string&, off_t* start, off_t* length)> FdGetterCallback;
 
-private:
-    std::vector<PcmAudioPlayer*> _audioPlayerPool;
-    friend class AudioPlayerProvider;
-};
-
-
-#endif //COCOS_AUDIOPLAYERPOOL_H
+#endif //COCOS_OPENSLHELPER_H

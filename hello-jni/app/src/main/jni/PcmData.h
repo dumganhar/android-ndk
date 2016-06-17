@@ -21,29 +21,61 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-#ifndef COCOS_AUDIOPLAYERPOOL_H
-#define COCOS_AUDIOPLAYERPOOL_H
 
-#include "OpenSLHelper.h"
+#ifndef COCOS_PCMDATA_H
+#define COCOS_PCMDATA_H
 
+#include <stdio.h>
+#include <string>
 #include <vector>
+#include <memory>
 
-#define AUDIO_PLAYER_POOL_SIZE (10)
-
-class PcmAudioPlayer;
-
-class PcmAudioPlayerPool
+struct PcmData
 {
-private:
-    PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames);
-    virtual ~PcmAudioPlayerPool();
+    std::shared_ptr<std::vector<char>> pcmBuffer;
+    int numChannels;
+    int sampleRate;
+    int bitsPerSample;
+    int containerSize;
+    int channelMask;
+    int endianness;
+    int numFrames;
 
-    PcmAudioPlayer* findAvailablePlayer(int numChannels);
+    PcmData()
+    {
+        reset();
+    }
 
-private:
-    std::vector<PcmAudioPlayer*> _audioPlayerPool;
-    friend class AudioPlayerProvider;
+    inline void reset()
+    {
+        numChannels = -1;
+        sampleRate = -1;
+        bitsPerSample = -1;
+        containerSize = -1;
+        channelMask = -1;
+        endianness = -1;
+        numFrames = -1;
+        pcmBuffer = nullptr;
+    }
+
+    inline bool isValid()
+    {
+        return numChannels > 0 && sampleRate > 0 && bitsPerSample > 0 && containerSize > 0 && numFrames > 0 && pcmBuffer != nullptr;
+    }
+
+    inline std::string toString()
+    {
+        std::string ret;
+        char buf[256] = {0};
+
+        snprintf(buf, sizeof(buf),
+                 "numChannels: %d, sampleRate: %d, bitPerSample: %d, containerSize: %d, channelMask: %d, endianness: %d, numFrames: %d",
+                 numChannels, sampleRate, bitsPerSample, containerSize, channelMask, endianness, numFrames
+        );
+
+        ret = buf;
+        return ret;
+    }
 };
 
-
-#endif //COCOS_AUDIOPLAYERPOOL_H
+#endif //COCOS_PCMDATA_H

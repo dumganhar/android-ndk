@@ -1,17 +1,35 @@
-//
-// Created by James Chen on 6/13/16.
-//
+/****************************************************************************
+Copyright (c) 2016 Chukong Technologies Inc.
 
-#ifndef HELLO_JNI_AUDIODECODER_H
-#define HELLO_JNI_AUDIODECODER_H
+http://www.cocos2d-x.org
 
-#include <vector>
-#include <string>
-#include <SLES/OpenSLES.h>
-#include <SLES/OpenSLES_Android.h>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+****************************************************************************/
+
+#ifndef COCOS_AUDIODECODER_H
+#define COCOS_AUDIODECODER_H
+
+#include "OpenSLHelper.h"
+#include "PcmData.h"
+
 #include <mutex>
 #include <condition_variable>
-
 
 /* Explicitly requesting SL_IID_ANDROIDSIMPLEBUFFERQUEUE and SL_IID_PREFETCHSTATUS
 * on the UrlAudioPlayer object for decoding, SL_IID_METADATAEXTRACTION for retrieving the
@@ -27,56 +45,12 @@
 
 class AudioDecoder {
 public:
-
-    struct Result
-    {
-        std::shared_ptr<std::vector<char>> pcmBuffer;
-        int numChannels;
-        int sampleRate;
-        int bitsPerSample;
-        int containerSize;
-        int channelMask;
-        int endianness;
-        int numFrames;
-
-        Result()
-        {
-            reset();
-        }
-
-        void reset()
-        {
-            numChannels = -1;
-            sampleRate = -1;
-            bitsPerSample = -1;
-            containerSize = -1;
-            channelMask = -1;
-            endianness = -1;
-            numFrames = -1;
-            pcmBuffer = NULL;
-        }
-
-        std::string toString()
-        {
-            std::string ret;
-            char buf[256] = {0};
-
-            snprintf(buf, sizeof(buf),
-                     "numChannels: %d, sampleRate: %d, bitPerSample: %d, containerSize: %d, channelMask: %d, endianness: %d, numFrames: %d",
-                     numChannels, sampleRate, bitsPerSample, containerSize, channelMask, endianness, numFrames
-            );
-
-            ret = buf;
-            return ret;
-        }
-    };
-
     AudioDecoder(SLEngineItf engineItf, const std::string& url, int sampleRate);
     virtual ~AudioDecoder();
 
-    void start();
+    void start(const FdGetterCallback& fdGetterCallback);
 
-    inline Result getResult() { return _result; };
+    inline PcmData getResult() { return _result; };
 
 private:
     void resample();
@@ -88,7 +62,7 @@ private:
 private:
     SLEngineItf _engineItf;
     std::string _url;
-    Result _result;
+    PcmData _result;
 
     /* Local storage for decoded audio data */
     char _pcmData[NB_BUFFERS_IN_QUEUE * BUFFER_SIZE_IN_BYTES];
@@ -127,9 +101,10 @@ private:
 
     CallbackCntxt _decContext;
     int _sampleRate;
+    int _assetFd;
 
     friend class SLAudioDecoderCallbackProxy;
 };
 
 
-#endif //HELLO_JNI_AUDIODECODER_H
+#endif //COCOS_AUDIODECODER_H

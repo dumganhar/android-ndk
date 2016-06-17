@@ -1,10 +1,30 @@
-//
-// Created by James Chen on 6/13/16.
-//
+/****************************************************************************
+Copyright (c) 2016 Chukong Technologies Inc.
+
+http://www.cocos2d-x.org
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+****************************************************************************/
 
 #include "AudioDecoder.h"
 #include "AudioResampler.h"
-#include "BufferProvider.h"
+#include "PcmBufferProvider.h"
 
 #include <android/log.h>
 #include <unistd.h>
@@ -87,6 +107,7 @@ AudioDecoder::AudioDecoder(SLEngineItf engineItf, const std::string &url, int sa
         , _endiannessKeyIndex(-1)
         , _eos(false)
         , _sampleRate(sampleRate)
+        , _assetFd(0)
 {
     memset(_pcmData, 0, sizeof(_pcmData));
     auto pcmBuffer = std::make_shared<std::vector<char>>();
@@ -101,9 +122,15 @@ AudioDecoder::~AudioDecoder()
         free(_pcmMetaData);
         _pcmMetaData = NULL;
     }
+
+    if (_assetFd > 0)
+    {
+        ::close(_assetFd);
+        _assetFd = 0;
+    }
 }
 
-void AudioDecoder::start() {
+void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     SLresult  result;
 
     /* Objects this application uses: one audio player */
@@ -154,16 +181,38 @@ void AudioDecoder::start() {
     required[2] = SL_BOOLEAN_TRUE;
     iidArray[2] = SL_IID_METADATAEXTRACTION;
 
-    /* Setup the data source */
-    decUri.locatorType = SL_DATALOCATOR_URI;
-    decUri.URI = (SLchar*)_url.c_str();
-    decMime.formatType = SL_DATAFORMAT_MIME;
-    /*     this is how ignored mime information is specified, according to OpenSL ES spec
-     *     in 9.1.6 SLDataFormat_MIME and 8.23 SLMetadataTraversalItf GetChildInfo */
-    decMime.mimeType      = (SLchar*)NULL;
-    decMime.containerType = SL_CONTAINERTYPE_UNSPECIFIED;
-    decSource.pLocator = (void *) &decUri;
-    decSource.pFormat  = (void *) &decMime;
+    SLDataFormat_MIME formatMime = {SL_DATAFORMAT_MIME, NULL, SL_CONTAINERTYPE_UNSPECIFIED};
+    decSource.pFormat = &formatMime;
+
+    if (_url[0] != '/') {
+        SLDataLocator_AndroidFD loc_fd;
+        off_t start = 0, length = 0;
+        std::string relativePath;
+        size_t position = _url.find("assets/");
+
+        if (0 == position) {
+            // "assets/" is at the beginning of the path and we don't want it
+            relativePath = _url.substr(strlen("assets/"));
+        } else {
+            relativePath = _url;
+        }
+
+        _assetFd = fdGetterCallback(relativePath, &start, &length);
+
+        if (_assetFd <= 0) {
+            LOGE("Failed to open file descriptor for '%s'", _url.c_str());
+            return;
+        }
+
+        // configure audio source
+        loc_fd = {SL_DATALOCATOR_ANDROIDFD, _assetFd, start, length};
+
+        decSource.pLocator = &loc_fd;
+    }
+    else{
+        decUri = {SL_DATALOCATOR_URI , (SLchar*)_url.c_str()};
+        decSource.pLocator = &decUri;
+    }
 
     /* Setup the data sink */
     decBuffQueue.locatorType = SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE;
@@ -259,10 +308,10 @@ void AudioDecoder::start() {
     ExitOnError(result);
     /*     2/ block until data has been prefetched */
     SLuint32 prefetchStatus = SL_PREFETCHSTATUS_UNDERFLOW;
-    SLuint32 timeOutIndex = 500; //cjh time out prefetching after 5s
+    SLuint32 timeOutIndex = 1000; //cjh time out prefetching after 2s
     while ((prefetchStatus != SL_PREFETCHSTATUS_SUFFICIENTDATA) && (timeOutIndex > 0) &&
            !_prefetchError) {
-        usleep(10 * 1000);
+        usleep(2 * 1000);
         (*prefetchItf)->GetPrefetchStatus(prefetchItf, &prefetchStatus);
         timeOutIndex--;
     }
@@ -371,7 +420,7 @@ void AudioDecoder::start() {
 void AudioDecoder::resample()
 {
     auto r = _result;
-    BufferProvider provider(r.pcmBuffer->data(), r.numFrames, r.pcmBuffer->size() / r.numFrames);
+    PcmBufferProvider provider(r.pcmBuffer->data(), r.numFrames, r.pcmBuffer->size() / r.numFrames);
 
     const int outFrameRate = _sampleRate;
     int output_channels = 2;
