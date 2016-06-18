@@ -48,7 +48,7 @@ public:
     AudioDecoder(SLEngineItf engineItf, const std::string& url, int sampleRate);
     virtual ~AudioDecoder();
 
-    void start(const FdGetterCallback& fdGetterCallback);
+    bool start(const FdGetterCallback& fdGetterCallback);
 
     inline PcmData getResult() { return _result; };
 
@@ -64,6 +64,7 @@ private:
     std::string _url;
     PcmData _result;
 
+    SLObjectItf _playObj;
     /* Local storage for decoded audio data */
     char _pcmData[NB_BUFFERS_IN_QUEUE * BUFFER_SIZE_IN_BYTES];
 

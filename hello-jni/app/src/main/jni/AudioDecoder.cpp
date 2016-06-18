@@ -44,20 +44,9 @@ using namespace cocos2d;
 /* used to detect errors likely to have occured when the OpenSL ES framework fails to open
  * a resource, for instance because a file URI is invalid, or an HTTP server doesn't respond.
  */
-#define PREFETCHEVENT_ERROR_CANDIDATE \
-        (SL_PREFETCHEVENT_STATUSCHANGE | SL_PREFETCHEVENT_FILLLEVELCHANGE)
+#define PREFETCHEVENT_ERROR_CANDIDATE (SL_PREFETCHEVENT_STATUSCHANGE | SL_PREFETCHEVENT_FILLLEVELCHANGE)
 
 //-----------------------------------------------------------------
-
-/* Exits the application if an error is encountered */
-#define ExitOnError(x) ExitOnErrorFunc(x,__LINE__)
-
-static void ExitOnErrorFunc( SLresult result , int line)
-{
-    if (SL_RESULT_SUCCESS != result) {
-        LOGE("Error code %u encountered at line %d, exiting!", result, line);
-    }
-}
 
 static void checkMetaData(int index, const char* key)
 {
@@ -95,7 +84,8 @@ public:
 AudioDecoder::AudioDecoder(SLEngineItf engineItf, const std::string &url, int sampleRate)
         : _engineItf(engineItf)
         , _url(url)
-        , _pcmMetaData(NULL)
+        , _playObj(nullptr)
+        , _pcmMetaData(nullptr)
         , _formatQueried(false)
         , _prefetchError(false)
         , _counter(0)
@@ -117,10 +107,10 @@ AudioDecoder::AudioDecoder(SLEngineItf engineItf, const std::string &url, int sa
 
 AudioDecoder::~AudioDecoder()
 {
-    if (_pcmMetaData != NULL)
+    if (_pcmMetaData != nullptr)
     {
         free(_pcmMetaData);
-        _pcmMetaData = NULL;
+        _pcmMetaData = nullptr;
     }
 
     if (_assetFd > 0)
@@ -128,9 +118,12 @@ AudioDecoder::~AudioDecoder()
         ::close(_assetFd);
         _assetFd = 0;
     }
+
+    SL_DESTROY_OBJ(_playObj);
 }
 
-void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
+bool AudioDecoder::start(const FdGetterCallback& fdGetterCallback)
+{
     SLresult  result;
 
     /* Objects this application uses: one audio player */
@@ -145,8 +138,7 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     /* Source of audio data for the decoding */
     SLDataSource      decSource;
     SLDataLocator_URI decUri;
-    SLDataFormat_MIME decMime;
-
+    
     /* Data sink for decoded audio */
     SLDataSink                decDest;
     SLDataLocator_AndroidSimpleBufferQueue decBuffQueue;
@@ -181,11 +173,11 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     required[2] = SL_BOOLEAN_TRUE;
     iidArray[2] = SL_IID_METADATAEXTRACTION;
 
-    SLDataFormat_MIME formatMime = {SL_DATAFORMAT_MIME, NULL, SL_CONTAINERTYPE_UNSPECIFIED};
+    SLDataFormat_MIME formatMime = {SL_DATAFORMAT_MIME, nullptr, SL_CONTAINERTYPE_UNSPECIFIED};
     decSource.pFormat = &formatMime;
 
     if (_url[0] != '/') {
-        SLDataLocator_AndroidFD loc_fd;
+        SLDataLocator_AndroidFD locFd;
         off_t start = 0, length = 0;
         std::string relativePath;
         size_t position = _url.find("assets/");
@@ -201,13 +193,13 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
 
         if (_assetFd <= 0) {
             LOGE("Failed to open file descriptor for '%s'", _url.c_str());
-            return;
+            return false;
         }
 
         // configure audio source
-        loc_fd = {SL_DATALOCATOR_ANDROIDFD, _assetFd, start, length};
+        locFd = {SL_DATALOCATOR_ANDROIDFD, _assetFd, start, length};
 
-        decSource.pLocator = &loc_fd;
+        decSource.pLocator = &locFd;
     }
     else{
         decUri = {SL_DATALOCATOR_URI , (SLchar*)_url.c_str()};
@@ -230,47 +222,46 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     decDest.pLocator = (void *) &decBuffQueue;
     decDest.pFormat = (void * ) &pcm;
 
-    LOGD("before player created!");
     /* Create the audio player */
     result = (*_engineItf)->CreateAudioPlayer(_engineItf, &player, &decSource, &decDest,
                                              NUM_EXPLICIT_INTERFACES_FOR_PLAYER, iidArray, required);
-    ExitOnError(result);
-    LOGD("Player created\n");
+    SL_RETURN_VAL_IF_FAILED(result, false, "CreateAudioPlayer failed");
 
+    _playObj = player;
     /* Realize the player in synchronous mode. */
     result = (*player)->Realize(player, SL_BOOLEAN_FALSE);
-    ExitOnError(result);
-    LOGD("Player realized\n");
+    SL_RETURN_VAL_IF_FAILED(result, false, "Realize failed");
 
     /* Get the play interface which is implicit */
     result = (*player)->GetInterface(player, SL_IID_PLAY, (void*)&playItf);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "GetInterface SL_IID_PLAY failed");
 
     /* Set up the player callback to get events during the decoding */
     // FIXME currently ignored
     result = (*playItf)->SetMarkerPosition(playItf, 2000);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "SetMarkerPosition failed");
+
     result = (*playItf)->SetPositionUpdatePeriod(playItf, 500);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "SetPositionUpdatePeriod failed");
     result = (*playItf)->SetCallbackEventsMask(playItf,
                                                SL_PLAYEVENT_HEADATMARKER | SL_PLAYEVENT_HEADATNEWPOS | SL_PLAYEVENT_HEADATEND);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "SetCallbackEventsMask failed");
     result = (*playItf)->RegisterCallback(playItf, SLAudioDecoderCallbackProxy::decProgressCallback, this);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "RegisterCallback failed");
     LOGD("Play callback registered\n");
 
+
     /* Get the buffer queue interface which was explicitly requested */
-    result = (*player)->GetInterface(player, SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
-                                     (void*)&decBuffQueueItf);
-    ExitOnError(result);
+    result = (*player)->GetInterface(player, SL_IID_ANDROIDSIMPLEBUFFERQUEUE,  (void*)&decBuffQueueItf);
+    SL_RETURN_VAL_IF_FAILED(result, false, "GetInterface SL_IID_ANDROIDSIMPLEBUFFERQUEUE failed");
 
     /* Get the prefetch status interface which was explicitly requested */
     result = (*player)->GetInterface(player, SL_IID_PREFETCHSTATUS, (void*)&prefetchItf);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "GetInterface SL_IID_PREFETCHSTATUS failed");
 
     /* Get the metadata extraction interface which was explicitly requested */
     result = (*player)->GetInterface(player, SL_IID_METADATAEXTRACTION, (void*)&mdExtrItf);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "GetInterface SL_IID_METADATAEXTRACTION failed");
 
     /* ------------------------------------------------------ */
     /* Initialize the callback and its context for the decoding buffer queue */
@@ -281,14 +272,13 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     _decContext.size = sizeof(_pcmData);
 
     result = (*decBuffQueueItf)->RegisterCallback(decBuffQueueItf, SLAudioDecoderCallbackProxy::decPlayCallback, this);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "decBuffQueueItf RegisterCallback failed");
 
     /* Enqueue buffers to map the region of memory allocated to store the decoded data */
-    LOGD("Enqueueing buffer ");
+//    LOGD("Enqueueing buffer ");
     for(int i = 0 ; i < NB_BUFFERS_IN_QUEUE ; i++) {
-        LOGD("%d ", i);
         result = (*decBuffQueueItf)->Enqueue(decBuffQueueItf, _decContext.pData, BUFFER_SIZE_IN_BYTES);
-        ExitOnError(result);
+        SL_RETURN_VAL_IF_FAILED(result, false, "Enqueue failed");
         _decContext.pData += BUFFER_SIZE_IN_BYTES;
     }
 
@@ -297,15 +287,17 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     /* ------------------------------------------------------ */
     /* Initialize the callback for prefetch errors, if we can't open the resource to decode */
     result = (*prefetchItf)->RegisterCallback(prefetchItf, SLAudioDecoderCallbackProxy::prefetchEventCallback, this);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "prefetchItf RegisterCallback failed");
+
     result = (*prefetchItf)->SetCallbackEventsMask(prefetchItf, PREFETCHEVENT_ERROR_CANDIDATE);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "prefetchItf SetCallbackEventsMask failed");
 
     /* ------------------------------------------------------ */
     /* Prefetch the data so we can get information about the format before starting to decode */
     /*     1/ cause the player to prefetch the data */
     result = (*playItf)->SetPlayState( playItf, SL_PLAYSTATE_PAUSED );
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "SetPlayState SL_PLAYSTATE_PAUSED failed");
+
     /*     2/ block until data has been prefetched */
     SLuint32 prefetchStatus = SL_PREFETCHSTATUS_UNDERFLOW;
     SLuint32 timeOutIndex = 1000; //cjh time out prefetching after 2s
@@ -317,14 +309,15 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     }
     if (timeOutIndex == 0 || _prefetchError) {
         LOGE("Failure to prefetch data in time, exiting\n");
-        ExitOnError(SL_RESULT_CONTENT_NOT_FOUND);
+        SL_RETURN_VAL_IF_FAILED(SL_RESULT_CONTENT_NOT_FOUND, false, "Failure to prefetch data in time");
     }
 
     /* ------------------------------------------------------ */
     /* Display duration */
     SLmillisecond durationInMsec = SL_TIME_UNKNOWN;
     result = (*playItf)->GetDuration(playItf, &durationInMsec);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "GetDuration failed");
+
     if (durationInMsec == SL_TIME_UNKNOWN) {
         LOGD("Content duration is unknown\n");
     } else {
@@ -341,16 +334,20 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     SLuint32 i, keySize, valueSize;
     SLMetadataInfo *keyInfo, *value;
     for(i=0 ; i<itemCount ; i++) {
-        keyInfo = NULL; keySize = 0;
-        value = NULL;   valueSize = 0;
+        keyInfo = nullptr; keySize = 0;
+        value = nullptr;   valueSize = 0;
         result = (*mdExtrItf)->GetKeySize(mdExtrItf, i, &keySize);
-        ExitOnError(result);
+        SL_RETURN_VAL_IF_FAILED(result, false, "GetKeySize(%d) failed", i);
+
         result = (*mdExtrItf)->GetValueSize(mdExtrItf, i, &valueSize);
-        ExitOnError(result);
+        SL_RETURN_VAL_IF_FAILED(result, false, "GetValueSize(%d) failed", i);
+
         keyInfo = (SLMetadataInfo*) malloc(keySize);
-        if (NULL != keyInfo) {
+        if (nullptr != keyInfo) {
             result = (*mdExtrItf)->GetKey(mdExtrItf, i, keySize, keyInfo);
-            ExitOnError(result);
+
+            SL_RETURN_VAL_IF_FAILED(result, false, "GetKey(%d) failed", i);
+
             LOGD("key[%d] size=%d, name=%s \tvalue size=%d \n",
                  i, keyInfo->size, keyInfo->data, valueSize);
             /* find out the key index of the metadata we're interested in */
@@ -381,7 +378,8 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     /* ------------------------------------------------------ */
     /* Start decoding */
     result = (*playItf)->SetPlayState(playItf, SL_PLAYSTATE_PLAYING);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "SetPlayState SL_PLAYSTATE_PLAYING failed");
+
     LOGD("Starting to decode\n");
 
     /* Decode until the end of the stream is reached */
@@ -398,16 +396,20 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
 
     /* Stop decoding */
     result = (*playItf)->SetPlayState(playItf, SL_PLAYSTATE_STOPPED);
-    ExitOnError(result);
+    SL_RETURN_VAL_IF_FAILED(result, false, "SetPlayState SL_PLAYSTATE_STOPPED failed");
+
     LOGD("Stopped decoding\n");
 
     /* Destroy the UrlAudioPlayer object */
-    (*player)->Destroy(player);
+    SL_DESTROY_OBJ(_playObj);
 
     LOGD("After destroy player ...");
 
-    free(_pcmMetaData);
-    _pcmMetaData = NULL;
+    if (_pcmMetaData != nullptr)
+    {
+        free(_pcmMetaData);
+        _pcmMetaData = nullptr;
+    }
 
     _result.numFrames = _result.pcmBuffer->size() / _result.numChannels / (_result.bitsPerSample / 8);
 
@@ -415,6 +417,8 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
     LOGD("original audio info: %s, total size: %d", info.c_str(), _result.pcmBuffer->size());
 
     resample();
+
+    return true;
 }
 
 void AudioDecoder::resample()
@@ -431,34 +435,34 @@ void AudioDecoder::resample()
     PcmBufferProvider provider(r.pcmBuffer->data(), r.numFrames, r.pcmBuffer->size() / r.numFrames);
 
     const int outFrameRate = _sampleRate;
-    int output_channels = 2;
-    size_t output_framesize = output_channels * sizeof(int32_t);
-    size_t output_frames = ((int64_t) r.numFrames * outFrameRate) / r.sampleRate;
-    size_t output_size = output_frames * output_framesize;
-    void* output_vaddr = malloc(output_size);
+    int outputChannels = 2;
+    size_t outputFrameSize = outputChannels * sizeof(int32_t);
+    size_t outputFrames = ((int64_t) r.numFrames * outFrameRate) / r.sampleRate;
+    size_t outputSize = outputFrames * outputFrameSize;
+    void* outputVAddr = malloc(outputSize);
 
     auto resampler = AudioResampler::create(AUDIO_FORMAT_PCM_16_BIT, r.numChannels, outFrameRate, AudioResampler::MED_QUALITY);
     resampler->setSampleRate(r.sampleRate);
     resampler->setVolume(AudioResampler::UNITY_GAIN_FLOAT, AudioResampler::UNITY_GAIN_FLOAT);
 
-    memset(output_vaddr, 0, output_size);
+    memset(outputVAddr, 0, outputSize);
 
-    LOGD("resample() %zu output frames", output_frames);
+    LOGD("resample() %zu output frames", outputFrames);
 
     std::vector<int> Ovalues;
 
     if (Ovalues.empty()) {
-        Ovalues.push_back(output_frames);
+        Ovalues.push_back(outputFrames);
     }
-    for (size_t i = 0, j = 0; i < output_frames; ) {
+    for (size_t i = 0, j = 0; i < outputFrames; ) {
         size_t thisFrames = Ovalues[j++];
         if (j >= Ovalues.size()) {
             j = 0;
         }
-        if (thisFrames == 0 || thisFrames > output_frames - i) {
-            thisFrames = output_frames - i;
+        if (thisFrames == 0 || thisFrames > outputFrames - i) {
+            thisFrames = outputFrames - i;
         }
-        int outFrames = resampler->resample((int*) output_vaddr + output_channels*i, thisFrames, &provider);
+        int outFrames = resampler->resample((int*) outputVAddr + outputChannels * i, thisFrames, &provider);
         LOGD("outFrames: %d", outFrames);
         i += thisFrames;
     }
@@ -470,22 +474,22 @@ void AudioDecoder::resample()
     LOGD("reset() complete");
 
     delete resampler;
-    resampler = NULL;
+    resampler = nullptr;
 
     // mono takes left channel only (out of stereo output pair)
     // stereo and multichannel preserve all channels.
 
     int channels = r.numChannels;
-    int32_t* out = (int32_t*) output_vaddr;
-    int16_t* convert = (int16_t*) malloc(output_frames * channels * sizeof(int16_t));
+    int32_t* out = (int32_t*) outputVAddr;
+    int16_t* convert = (int16_t*) malloc(outputFrames * channels * sizeof(int16_t));
 
     const int volumeShift = 12; // shift requirement for Q4.27 to Q.15
     // round to half towards zero and saturate at int16 (non-dithered)
     const int roundVal = (1<<(volumeShift-1)) - 1; // volumePrecision > 0
 
-    for (size_t i = 0; i < output_frames; i++) {
+    for (size_t i = 0; i < outputFrames; i++) {
         for (int j = 0; j < channels; j++) {
-            int32_t s = out[i * output_channels + j] + roundVal; // add offset here
+            int32_t s = out[i * outputChannels + j] + roundVal; // add offset here
             if (s < 0) {
                 s = (s + 1) >> volumeShift; // round to 0
                 if (s < -32768) {
@@ -502,18 +506,18 @@ void AudioDecoder::resample()
     }
 
     // Reset result
-    _result.numFrames = output_frames;
+    _result.numFrames = outputFrames;
     _result.sampleRate = outFrameRate;
 
     auto buffer = std::make_shared<std::vector<char>>();
     buffer->reserve(_result.numFrames * _result.bitsPerSample / 8);
-    buffer->insert(buffer->end(), (char*)convert, (char*)convert + output_frames * channels * sizeof(int16_t));
+    buffer->insert(buffer->end(), (char*)convert, (char*)convert + outputFrames * channels * sizeof(int16_t));
     _result.pcmBuffer = buffer;
 
     LOGD("pcm buffer size: %d", _result.pcmBuffer->size());
 
     free(convert);
-    free(output_vaddr);
+    free(outputVAddr);
 }
 
 //-----------------------------------------------------------------
@@ -529,11 +533,14 @@ void AudioDecoder::prefetchCallback( SLPrefetchStatusItf caller, SLuint32 event)
     SLpermille level = 0;
     SLresult result;
     result = (*caller)->GetFillLevel(caller, &level);
-    ExitOnError(result);
+    SL_RETURN_IF_FAILED(result, "GetFillLevel failed");
+
     SLuint32 status;
     //LOGD("PrefetchEventCallback: received event %u\n", event);
     result = (*caller)->GetPrefetchStatus(caller, &status);
-    ExitOnError(result);
+
+    SL_RETURN_IF_FAILED(result, "GetPrefetchStatus failed");
+
     if ((PREFETCHEVENT_ERROR_CANDIDATE == (event & PREFETCHEVENT_ERROR_CANDIDATE))
         && (level == 0) && (status == SL_PREFETCHSTATUS_UNDERFLOW)) {
         LOGD("PrefetchEventCallback: Error while prefetching data, exiting\n");
@@ -545,22 +552,9 @@ void AudioDecoder::prefetchCallback( SLPrefetchStatusItf caller, SLuint32 event)
 /* Callback for "playback" events, i.e. event happening during decoding */
 void AudioDecoder::decodeProgressCallback(SLPlayItf caller, SLuint32 event)
 {
-    SLresult result;
-    SLmillisecond msec;
-    result = (*caller)->GetPosition(caller, &msec);
-    ExitOnError(result);
-
     if (SL_PLAYEVENT_HEADATEND & event) {
-        LOGD("SL_PLAYEVENT_HEADATEND current position=%u ms\n", msec);
+        LOGD("SL_PLAYEVENT_HEADATEND");
         signalEos();
-    }
-
-    if (SL_PLAYEVENT_HEADATNEWPOS & event) {
-        LOGD("SL_PLAYEVENT_HEADATNEWPOS current position=%u ms\n", msec);
-    }
-
-    if (SL_PLAYEVENT_HEADATMARKER & event) {
-        LOGD("SL_PLAYEVENT_HEADATMARKER current position=%u ms\n", msec);
     }
 }
 
@@ -569,18 +563,19 @@ void AudioDecoder::decodeProgressCallback(SLPlayItf caller, SLuint32 event)
 void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
 {
     _counter++;
-
+    SLresult result;
     // FIXME: ??
     if (_counter % 1000 == 0) {
         SLmillisecond msec;
-        SLresult result = (*_decContext.playItf)->GetPosition(_decContext.playItf, &msec);
-        ExitOnError(result);
+        result = (*_decContext.playItf)->GetPosition(_decContext.playItf, &msec);
+        SL_RETURN_IF_FAILED(result, "decodeToPcmCallback,GetPosition failed");
         LOGD("DecPlayCallback called (iteration %d): current position=%u ms\n", _counter, msec);
     }
 
     _result.pcmBuffer->insert(_result.pcmBuffer->end(), _decContext.pData, _decContext.pData + BUFFER_SIZE_IN_BYTES);
 
-    ExitOnError( (*queueItf)->Enqueue(queueItf, _decContext.pData, BUFFER_SIZE_IN_BYTES) );
+    result = (*queueItf)->Enqueue(queueItf, _decContext.pData, BUFFER_SIZE_IN_BYTES);
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback,Enqueue failed");
 
     /* Increase data pointer by buffer size */
     _decContext.pData += BUFFER_SIZE_IN_BYTES;
@@ -596,7 +591,8 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
 #if 0
     /* Example: buffer queue state display */
     SLAndroidSimpleBufferQueueState decQueueState;
-    ExitOnError( (*queueItf)->GetState(queueItf, &decQueueState) );
+    result =(*queueItf)->GetState(queueItf, &decQueueState);
+    SL_RETURN_IF_FAILED(result, "decQueueState.GetState failed");
 
     LOGD("DecBufferQueueCallback now has _decContext.pData=%p, _decContext.pDataBase=%p, queue: "
                  "count=%u playIndex=%u, count: %d\n",
@@ -606,8 +602,9 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
 #if 0
     /* Example: display duration in callback where we use the callback context for the SLPlayItf*/
     SLmillisecond durationInMsec = SL_TIME_UNKNOWN;
-    SLresult result = (*_decContext.playItf)->GetDuration(_decContext.playItf, &durationInMsec);
-    ExitOnError(result);
+    result = (*_decContext.playItf)->GetDuration(_decContext.playItf, &durationInMsec);
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback,GetDuration failed");
+
     if (durationInMsec == SL_TIME_UNKNOWN) {
         LOGD("Content duration is unknown (in dec callback)\n");
     } else {
@@ -620,7 +617,8 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
     /* Example: display position in callback where we use the callback context for the SLPlayItf*/
     SLmillisecond posMsec = SL_TIME_UNKNOWN;
     result = (*_decContext.playItf)->GetPosition(_decContext.playItf, &posMsec);
-    ExitOnError(result);
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback,GetPosition2 failed");
+
     if (posMsec == SL_TIME_UNKNOWN) {
         LOGD("Content position is unknown (in dec callback)\n");
     } else {
@@ -634,7 +632,9 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
         return;
     }
     SLresult res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _sampleRateKeyIndex,
-                                                PCM_METADATA_VALUE_SIZE, _pcmMetaData);  ExitOnError(res);
+                                                PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+
+    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _sampleRateKeyIndex failed")
     // Note: here we could verify the following:
     //         pcmMetaData->encoding == SL_CHARACTERENCODING_BINARY
     //         pcmMetaData->size == sizeof(SLuint32)
@@ -642,23 +642,24 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
 
     _result.sampleRate = *((SLuint32*)_pcmMetaData->data);
     res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _numChannelsKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
-    ExitOnError(res);
+    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _numChannelsKeyIndex failed")
+
     _result.numChannels = *((SLuint32*)_pcmMetaData->data);
 
     res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _bitsPerSampleKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
-    ExitOnError(res);
+    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _bitsPerSampleKeyIndex failed")
     _result.bitsPerSample = *((SLuint32*)_pcmMetaData->data);
 
     res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _containerSizeKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
-    ExitOnError(res);
+    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _containerSizeKeyIndex failed")
     _result.containerSize = *((SLuint32*)_pcmMetaData->data);
 
     res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _channelMaskKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
-    ExitOnError(res);
+    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _channelMaskKeyIndex failed")
     _result.channelMask = *((SLuint32*)_pcmMetaData->data);
 
     res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _endiannessKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
-    ExitOnError(res);
+    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _endiannessKeyIndex failed")
     _result.endianness = *((SLuint32*)_pcmMetaData->data);
 
     _formatQueried = true;

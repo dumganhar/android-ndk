@@ -43,8 +43,8 @@ public:
 
     IAudioPlayer* getAudioPlayer(const std::string& audioFilePath);
     PcmData preloadEffect(const std::string& audioFilePath);
-    void clearCache(const std::string& audioFilePath);
-    void clearAllCaches();
+    void clearPcmCache(const std::string& audioFilePath);
+    void clearAllPcmCaches();
 
 private:
     struct AudioFileInfo

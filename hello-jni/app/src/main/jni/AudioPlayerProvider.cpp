@@ -77,7 +77,11 @@ AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outp
 
 AudioPlayerProvider::~AudioPlayerProvider()
 {
-    delete _pcmAudioPlayerPool;
+    if (_pcmAudioPlayerPool != nullptr)
+    {
+        delete _pcmAudioPlayerPool;
+        _pcmAudioPlayerPool = nullptr;
+    }
 }
 
 IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePath)
@@ -167,6 +171,12 @@ PcmData AudioPlayerProvider::preloadEffect(const std::string &audioFilePath)
         return pcmData;
     }
 
+    auto iter = _pcmCache.find(audioFilePath);
+    if (iter != _pcmCache.end())
+    {
+        return iter->second;
+    }
+
     auto info = getFileInfo(audioFilePath);
     if (isSmallFile(info.length))
     {
@@ -245,12 +255,16 @@ bool AudioPlayerProvider::isSmallFile(long fileSize)
     return fileSize < 30000;
 }
 
-void AudioPlayerProvider::clearCache(const std::string &audioFilePath)
+void AudioPlayerProvider::clearPcmCache(const std::string &audioFilePath)
 {
-
+    auto iter = _pcmCache.find(audioFilePath);
+    if (iter != _pcmCache.end())
+    {
+        _pcmCache.erase(iter);
+    }
 }
 
-void AudioPlayerProvider::clearAllCaches()
+void AudioPlayerProvider::clearAllPcmCaches()
 {
-
+    _pcmCache.clear();
 }
