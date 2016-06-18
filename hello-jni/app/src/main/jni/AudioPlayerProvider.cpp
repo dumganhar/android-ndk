@@ -181,11 +181,16 @@ PcmData AudioPlayerProvider::preloadEffect(const std::string &audioFilePath)
     if (isSmallFile(info.length))
     {
         LOGD("AudioPlayerProvider::preloadEffect: %s", audioFilePath.c_str());
-        auto decoder = new AudioDecoder(_engineItf, audioFilePath, _deviceSampleRate);
-        decoder->start(_fdGetterCallback);
-        pcmData = decoder->getResult();
-        _pcmCache.insert(std::make_pair(audioFilePath, pcmData));
-        delete decoder;
+        AudioDecoder decoder(_engineItf, audioFilePath, _deviceSampleRate);
+        if (decoder.start(_fdGetterCallback))
+        {
+            pcmData = decoder.getResult();
+            _pcmCache.insert(std::make_pair(audioFilePath, pcmData));
+        }
+        else
+        {
+            LOGE("decode (%s) failed!", audioFilePath.c_str());
+        }
     }
     else
     {
