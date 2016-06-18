@@ -419,6 +419,14 @@ void AudioDecoder::start(const FdGetterCallback& fdGetterCallback) {
 
 void AudioDecoder::resample()
 {
+    if (_result.sampleRate == _sampleRate)
+    {
+        LOGD("No need to resample since the sample rate (%d) of the decoded pcm data is the same as the device output sample rate", _sampleRate);
+        return;
+    }
+
+    LOGD("Resample: %d --> %d", _result.sampleRate, _sampleRate);
+
     auto r = _result;
     PcmBufferProvider provider(r.pcmBuffer->data(), r.numFrames, r.pcmBuffer->size() / r.numFrames);
 
@@ -463,8 +471,6 @@ void AudioDecoder::resample()
 
     delete resampler;
     resampler = NULL;
-
-//    int outFrames = resampler->resample((int*)output_vaddr, output_frames, &provider);
 
     // mono takes left channel only (out of stereo output pair)
     // stereo and multichannel preserve all channels.

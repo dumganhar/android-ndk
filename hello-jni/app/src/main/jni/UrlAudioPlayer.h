@@ -27,6 +27,7 @@ THE SOFTWARE.
 
 #include "IAudioPlayer.h"
 #include "OpenSLHelper.h"
+#include <mutex>
 
 class UrlAudioPlayer : public IAudioPlayer
 {
@@ -91,6 +92,8 @@ private:
 
     PlayOverCallback _playOverCallback;
     void*_playOverCallbackContext;
+
+    std::mutex _stateMutex;
 
     friend class SLUrlAudioPlayerCallbackProxy;
     friend class AudioPlayerProvider;

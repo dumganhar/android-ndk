@@ -73,9 +73,10 @@ private:
     bool initForPlayPcmData(int numChannels, int sampleRate, int bufferSizeInBytes);
 
     bool prepare(const std::string& url, const PcmData& decResult);
+    void reset();
 
-    void wait();
-    void wakeup();
+    void onPlayOver();
+    void onWakeup();
     void enqueue();
 
     void samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq);
@@ -109,7 +110,7 @@ private:
 
     int _currentBufferIndex;
     PlayOverCallback _playOverCallback;
-    void* _PlayOverCallbackContext;
+    void* _playOverCallbackContext;
 
     friend class SLPcmAudioPlayerCallbackProxy;
     friend class PcmAudioPlayerPool;

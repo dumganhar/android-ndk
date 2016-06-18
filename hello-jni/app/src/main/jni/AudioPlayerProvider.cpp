@@ -241,6 +241,16 @@ AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(const std::s
 
 bool AudioPlayerProvider::isSmallFile(long fileSize)
 {
-    //TODO: If file size is smaller than 500k, we think it's a small file. This value should be set by developers.
-    return fileSize < 500000;
+    //TODO: If file size is smaller than 30k, we think it's a small file. This value should be set by developers.
+    return fileSize < 30000;
+}
+
+void AudioPlayerProvider::clearCache(const std::string &audioFilePath)
+{
+
+}
+
+void AudioPlayerProvider::clearAllCaches()
+{
+
 }

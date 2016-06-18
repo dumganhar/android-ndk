@@ -80,7 +80,9 @@ public:
 void UrlAudioPlayer::playEventCallback(SLPlayItf caller, SLuint32 playEvent)
 {
     //Note that it's on sub thread, please don't invoke OpenSLES API on sub thread
-    if (playEvent == SL_PLAYEVENT_HEADATEND) {
+    std::unique_lock<std::mutex> lk(_stateMutex);
+    if (playEvent == SL_PLAYEVENT_HEADATEND)
+    {
         //fix issue#8965:AudioEngine can't looping audio on Android 2.3.x
         if (isLoop())
         {
@@ -94,6 +96,7 @@ void UrlAudioPlayer::playEventCallback(SLPlayItf caller, SLuint32 playEvent)
             {
                 LOGD("(%s) play over, invoke callback ...", _url.c_str());
                 _playOverCallback(this, _playOverCallbackContext);
+                _playOverCallback = nullptr;
             }
         }
     }
@@ -109,6 +112,20 @@ void UrlAudioPlayer::stop()
 {
     SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
     SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::stop failed");
+    // Make a fake end event to trigger play over callback.
+    std::unique_lock<std::mutex> lk(_stateMutex);
+    if (isPlaying())
+    {
+        setLoop(false);
+        setPlaying(false);
+
+        if (_playOverCallback != nullptr)
+        {
+            LOGD("(%s) play over 2, invoke callback ...", _url.c_str());
+            _playOverCallback(this, _playOverCallbackContext);
+            _playOverCallback = nullptr;
+        }
+    }
 }
 
 void UrlAudioPlayer::pause()
