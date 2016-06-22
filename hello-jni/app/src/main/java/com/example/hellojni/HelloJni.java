@@ -27,6 +27,7 @@ import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -42,6 +43,7 @@ public class HelloJni extends Activity
 {
     private static final String TAG = "cjh";
     private static final int MY_PERMISSIONS_REQUEST_WRITE_EXTERNAL = 200;
+    private Handler mHandler = null;
 
     /** Called when the activity is first created. */
     @Override
@@ -119,7 +121,9 @@ public class HelloJni extends Activity
             files[i] = String.format("/sdcard/%02d.mp3", i);
             Log.d(TAG, "load file: " + files[i]);
         }
+//        files[10] = "/sdcard/doorOpen.ogg";
 
+//        String files[] = new String[] {"doorOpen.ogg"};
         jniLoadSamples(getAssets(), files);
 
         // UI
@@ -150,6 +154,17 @@ public class HelloJni extends Activity
         button.setText("Play");
         button.setLayoutParams(btnParams);
         layout.addView(button);
+
+        final int delayTime = 30;
+        mHandler = new Handler();
+        final Runnable runnable = new Runnable() {
+            @Override
+            public void run() {
+                mHandler.postDelayed(this, delayTime);
+                playEffect();
+            }
+        };
+        mHandler.postDelayed(runnable, delayTime);
     }
 
     private void playEffect() {
@@ -186,7 +201,7 @@ public class HelloJni extends Activity
     protected void onDestroy() {
         Log.d(TAG, "onDestroy ...");
         super.onDestroy();
-
+        mHandler.removeCallbacksAndMessages(null);
         jniShutdown();
     }
 

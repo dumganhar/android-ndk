@@ -126,6 +126,8 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
     char filePath[256] = {0};
     sprintf(filePath, "/sdcard/%02d.mp3", __fileIndex);
     __currentFilePath = filePath;
+//    __currentFilePath = "doorOpen.ogg";//filePath;
+
     ++__fileIndex;
 
     clearNotValidUrlAudioPlayers();

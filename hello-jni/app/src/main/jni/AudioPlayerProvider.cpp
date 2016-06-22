@@ -77,6 +77,7 @@ AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outp
 
 AudioPlayerProvider::~AudioPlayerProvider()
 {
+    UrlAudioPlayer::destroyUnusedPlayers();
     if (_pcmAudioPlayerPool != nullptr)
     {
         delete _pcmAudioPlayerPool;
@@ -86,6 +87,9 @@ AudioPlayerProvider::~AudioPlayerProvider()
 
 IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePath)
 {
+    // Every time requesting a audio player, try to remove unused UrlAudioPlayers
+    UrlAudioPlayer::destroyUnusedPlayers();
+
     IAudioPlayer* player = nullptr;
 
     // Pcm data decoding by OpenSLES API only supports in API level 17 and later.
@@ -129,15 +133,16 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
         // generally PcmAudioPlayer is used for playing short audio like game effects while
         // playing background music uses UrlAudioPlayer
         AudioFileInfo info  = getFileInfo(audioFilePath);
-        SLuint32 locatorType = info.assetFd > 0 ? SL_DATALOCATOR_ANDROIDFD : SL_DATALOCATOR_URI;
-        if (info.length <= 0)
+        if (!info.isValid())
         {
             return nullptr;
         }
 
+        SLuint32 locatorType = info.assetFd > 0 ? SL_DATALOCATOR_ANDROIDFD : SL_DATALOCATOR_URI;
+
         if (isSmallFile(info.length))
         {
-            pcmData = preloadEffect(audioFilePath);
+            pcmData = preloadEffect(info);
             auto pcmPlayer = _pcmAudioPlayerPool->findAvailablePlayer(pcmData.numChannels);
             if (pcmPlayer != nullptr)
             {
@@ -164,6 +169,12 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
 
 PcmData AudioPlayerProvider::preloadEffect(const std::string &audioFilePath)
 {
+    auto info = getFileInfo(audioFilePath);
+    return preloadEffect(info);
+}
+
+PcmData AudioPlayerProvider::preloadEffect(const AudioFileInfo& info)
+{
     PcmData pcmData;
     // Pcm data decoding by OpenSLES API only supports in API level 17 and later.
     if (getSystemAPILevel() < 17)
@@ -171,13 +182,18 @@ PcmData AudioPlayerProvider::preloadEffect(const std::string &audioFilePath)
         return pcmData;
     }
 
+    if (!info.isValid())
+    {
+        return pcmData;
+    }
+
+    std::string audioFilePath = info.url;
     auto iter = _pcmCache.find(audioFilePath);
     if (iter != _pcmCache.end())
     {
         return iter->second;
     }
 
-    auto info = getFileInfo(audioFilePath);
     if (isSmallFile(info.length))
     {
         LOGD("AudioPlayerProvider::preloadEffect: %s", audioFilePath.c_str());
@@ -245,6 +261,7 @@ AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(const std::s
         }
     }
 
+    info.url = audioFilePath;
     info.assetFd = assetFd;
     info.start = start;
     info.length = fileSize;

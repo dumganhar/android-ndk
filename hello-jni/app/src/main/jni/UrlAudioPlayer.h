@@ -28,46 +28,49 @@ THE SOFTWARE.
 #include "IAudioPlayer.h"
 #include "OpenSLHelper.h"
 #include <mutex>
+#include <vector>
 
 class UrlAudioPlayer : public IAudioPlayer
 {
 public:
+    static void destroyUnusedPlayers();
+
     virtual ~UrlAudioPlayer();
 
     // Override Functions Begin
-    virtual int getId() override { return _id; };
+    virtual int getId() const override { return _id; };
     virtual void setId(int id) override { _id = id; };
-    virtual std::string getUrl() override { return _url; };
+    virtual std::string getUrl() const override { return _url; };
+    virtual State getState() const override { return _state; };
 
     virtual void play() override;
-    virtual bool isPlaying() override { return _isPlaying; };
-
     virtual void pause() override;
     virtual void resume() override;
     virtual void stop() override;
     virtual void rewind() override;
 
     virtual void setVolume(float volume) override;
-    virtual float getVolume() override;
+    virtual float getVolume() const override;
 
     virtual void setLoop(bool isLoop) override;
-    virtual bool isLoop() override;
+    virtual bool isLoop() const override;
 
-    virtual float getDuration() override;
-    virtual float getPosition() override;
+    virtual float getDuration() const override;
+    virtual float getPosition() const override;
     virtual bool setPosition(float pos) override;
 
-    virtual void setPlayOverCallback(const PlayOverCallback& playOverCallback, void* context) override;
+    virtual void setPlayEventCallback(const PlayEventCallback& playEventCallback) override;
 
-    virtual bool isOwnedByPool() override { return false; };
-    // Override Functions End
+    virtual bool isOwnedByPool() const override { return false; };
+    virtual void destroy() override ;
+    // Override Functions EndOv
 
 private:
     UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
 
     bool prepare(const std::string& url, SLuint32 locatorType, int assetFd, int start, int length);
 
-    inline void setPlaying(bool isPlaying) { _isPlaying = isPlaying; };
+    inline void setState(State state) { _state = state; };
 
     void playEventCallback(SLPlayItf caller, SLuint32 playEvent);
 private:
@@ -87,14 +90,14 @@ private:
     float _volume;
     float _duration;
     bool _isLoop;
-    bool _isPlaying;
+    State _state;
     bool _isDestroyed;
 
-    PlayOverCallback _playOverCallback;
-    void*_playOverCallbackContext;
+    PlayEventCallback _playEventCallback;
 
     std::mutex _stateMutex;
 
+    static std::vector<UrlAudioPlayer*> __unusedPlayers;
     friend class SLUrlAudioPlayerCallbackProxy;
     friend class AudioPlayerProvider;
 };

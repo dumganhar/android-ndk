@@ -34,15 +34,21 @@ class PcmAudioPlayer;
 
 class PcmAudioPlayerPool
 {
-private:
+public:
     PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames);
     virtual ~PcmAudioPlayerPool();
 
     PcmAudioPlayer* findAvailablePlayer(int numChannels);
 
 private:
+    PcmAudioPlayer* createPlayer(int numChannels);
+
+private:
+    SLEngineItf _engineItf;
+    SLObjectItf _outputMixObject;
+    int _deviceSampleRate;
+    int _deviceBufferSizeInFrames;
     std::vector<PcmAudioPlayer*> _audioPlayerPool;
-    friend class AudioPlayerProvider;
 };
 
 

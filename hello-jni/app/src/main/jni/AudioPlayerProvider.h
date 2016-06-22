@@ -49,6 +49,7 @@ public:
 private:
     struct AudioFileInfo
     {
+        std::string url;
         int assetFd;
         off_t start;
         off_t length;
@@ -58,8 +59,14 @@ private:
         , start(0)
         , length(0)
         {};
+
+        inline bool isValid() const
+        {
+            return !url.empty() && length > 0;
+        }
     };
 
+    PcmData preloadEffect(const AudioFileInfo& info);
     AudioFileInfo getFileInfo(const std::string& audioFilePath);
     bool isSmallFile(long fileSize);
 private:

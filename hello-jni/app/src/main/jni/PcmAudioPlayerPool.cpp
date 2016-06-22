@@ -23,6 +23,7 @@ THE SOFTWARE.
 ****************************************************************************/
 #include "PcmAudioPlayerPool.h"
 #include "PcmAudioPlayer.h"
+#include "IAudioPlayer.h"
 
 #include <android/log.h>
 #define LOG_TAG "PcmAudioPlayerPool"
@@ -30,27 +31,27 @@ THE SOFTWARE.
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
 PcmAudioPlayerPool::PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames)
+        : _engineItf(engineItf)
+        , _outputMixObject(outputMixObject)
+        , _deviceSampleRate(deviceSampleRate)
+        , _deviceBufferSizeInFrames(deviceBufferSizeInFrames)
 {
     _audioPlayerPool.reserve(AUDIO_PLAYER_POOL_SIZE);
 
     for (int i = 0; i < AUDIO_PLAYER_POOL_SIZE; ++i)
     {
-        //FIXME: find a better algorithm to pre-allocate PcmAudioPlayer,
-        // should not take up all audio resources, since we need remain at least one for UrlAudioPlayer
         int numChannels = 1;
-        if (i >= (AUDIO_PLAYER_POOL_SIZE * 2 / 3))
+        if (i >= (AUDIO_PLAYER_POOL_SIZE / 2))
         {
             numChannels = 2;
         }
 
-        auto player = new PcmAudioPlayer(engineItf, outputMixObject);
-        if (!player->initForPlayPcmData(numChannels, deviceSampleRate, deviceBufferSizeInFrames * numChannels * 2)) {
-            LOGE("PcmAudioPlayer pool only supports size with %d", i-1);
-            delete player;
-            break;
+        auto player = createPlayer(numChannels);
+        if (player != nullptr)
+        {
+            LOGD("Insert a PcmAudioPlayer (%p, channels:%d) to pool ...", player, numChannels);
+            _audioPlayerPool.push_back(player);
         }
-        LOGD("Insert a PcmAudioPlayer (%d, %p, %d) to pool ...", i, player, numChannels);
-        _audioPlayerPool.push_back(player);
     }
 }
 
@@ -68,17 +69,59 @@ PcmAudioPlayerPool::~PcmAudioPlayerPool()
     LOGD("PcmAudioPlayerPool::destroy end ...");
 }
 
-PcmAudioPlayer *PcmAudioPlayerPool::findAvailablePlayer(int numChannels) {
+PcmAudioPlayer *PcmAudioPlayerPool::findAvailablePlayer(int numChannels)
+{
+    std::vector<PcmAudioPlayer*>::iterator freeIter = _audioPlayerPool.end();
     int i = 0;
-    for (const auto& player : _audioPlayerPool)
+    for (auto iter = _audioPlayerPool.begin(); iter != _audioPlayerPool.end(); ++iter)
     {
-        if (!player->isPlaying() && player->getChannelCount() == numChannels)
+        if ((*iter)->getState() != IAudioPlayer::State::PLAYING)
         {
-            LOGD("PcmAudioPlayer %d is working ...", i);
-            return player;
+            if (freeIter == _audioPlayerPool.end())
+            {
+                freeIter = iter;
+            }
+
+            if ((*iter)->getChannelCount() == numChannels)
+            {
+                LOGD("PcmAudioPlayer %d is working ...", i);
+                return (*iter);
+            }
         }
         ++i;
     }
+
+    // Try to delete a free player and create a new one matches the channel count
+    if (freeIter != _audioPlayerPool.end())
+    {
+        LOGD("Removing a player (%p, channel:%d)", (*freeIter), (*freeIter)->getChannelCount());
+        delete (*freeIter);
+        _audioPlayerPool.erase(freeIter);
+        auto player = createPlayer(numChannels);
+        if (player != nullptr)
+        {
+            LOGD("Insert a PcmAudioPlayer (%p, channels:%d) to pool ...", player, numChannels);
+            _audioPlayerPool.push_back(player);
+            return player;
+        }
+    }
+
     LOGE("Could not find available audio player with %d channels!", numChannels);
     return nullptr;
 }
+
+PcmAudioPlayer *PcmAudioPlayerPool::createPlayer(int numChannels)
+{
+    PcmAudioPlayer* player = new PcmAudioPlayer(_engineItf, _outputMixObject);
+    if (player != nullptr)
+    {
+        if (!player->initForPlayPcmData(numChannels, _deviceSampleRate, _deviceBufferSizeInFrames * numChannels * 2))
+        {
+            delete player;
+            player = nullptr;
+        }
+    }
+
+    return player;
+}
+

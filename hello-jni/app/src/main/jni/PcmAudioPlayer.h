@@ -36,35 +36,35 @@ class PcmAudioPlayer : public IAudioPlayer
 {
 public:
     // Override Functions Begin
-    virtual int getId() override { return _id; };
+    virtual int getId() const override { return _id; };
     virtual void setId(int id) override { _id = id; };
-    virtual std::string getUrl() override { return _url; };
+    virtual std::string getUrl() const override { return _url; };
+    virtual State getState() const override { return _state; };
 
     virtual void play() override;
-    virtual bool isPlaying() override { return _isPlaying; };
-
     virtual void pause() override;
     virtual void resume() override;
     virtual void stop() override;
     virtual void rewind() override;
 
     virtual void setVolume(float volume) override;
-    virtual float getVolume() override;
+    virtual float getVolume() const override;
 
     virtual void setLoop(bool isLoop) override;
-    virtual bool isLoop() override;
+    virtual bool isLoop() const override;
 
-    virtual float getDuration() override;
-    virtual float getPosition() override;
+    virtual float getDuration() const override;
+    virtual float getPosition() const override;
     virtual bool setPosition(float pos) override;
 
-    virtual void setPlayOverCallback(const PlayOverCallback& playOverCb, void* context) override;
+    virtual void setPlayEventCallback(const PlayEventCallback& playEventCallback) override;
 
-    virtual bool isOwnedByPool() override { return true; };
+    virtual bool isOwnedByPool() const override { return true; };
+    virtual void destroy() override;
     // Override Functions End
 
-    inline int getChannelCount() { return _numChannels; };
-    inline int getSampleRate() { return _sampleRate; };
+    inline int getChannelCount() const { return _numChannels; };
+    inline int getSampleRate() const { return _sampleRate; };
 
 private:
     PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
@@ -81,7 +81,7 @@ private:
 
     void samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq);
 
-    inline void setPlaying(bool isPlaying) { _isPlaying = isPlaying; };
+    void setState(State state);
 
 private:
     SLEngineItf _engineItf;
@@ -102,15 +102,16 @@ private:
 
     float _volume;
     bool _isLoop;
-    bool _isPlaying;
+    State _state;
+    bool _isWaiting;
     bool _isDestroyed;
 
+    std::mutex _stateMutex;
     std::mutex _enqueueMutex;
     std::condition_variable _enqueueCond;
 
     int _currentBufferIndex;
-    PlayOverCallback _playOverCallback;
-    void* _playOverCallbackContext;
+    PlayEventCallback _playEventCallback;
 
     friend class SLPcmAudioPlayerCallbackProxy;
     friend class PcmAudioPlayerPool;
