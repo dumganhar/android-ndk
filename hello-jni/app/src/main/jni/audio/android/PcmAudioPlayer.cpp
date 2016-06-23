@@ -54,10 +54,9 @@ PcmAudioPlayer::PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObjec
         , _numChannels(-1)
         , _sampleRate(-1)
         , _bufferSizeInBytes(0)
-        , _isLoop(false)
         , _volume(0.0f)
+        , _isLoop(false)
         , _state(State::INVALID)
-        , _isWaiting(false)
         , _isDestroyed(false)
         , _currentBufferIndex(0)
         , _playEventCallback(nullptr)
@@ -134,14 +133,13 @@ void PcmAudioPlayer::samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq)
             onPlayOver();
 
             LOGD("PcmAudioPlayer (%p) is waiting ...", this);
-            _isWaiting = true;
             {
                 std::unique_lock<std::mutex> lk(_enqueueMutex);
+                setState(State::INITIALIZED);
                 _stateMutex.unlock();
                 _enqueueCond.wait(lk);
                 _stateMutex.lock();
             }
-            _isWaiting = false;
 
             if (_isDestroyed)
             {
@@ -174,7 +172,7 @@ void PcmAudioPlayer::play()
 //        LOGD("PcmAudioPlayer (%p, %d) will play ...", this, getId());
 
         int counter = 0; // try to wait 1.5ms
-        while (!_isWaiting)
+        while (_state != State::INITIALIZED)
         {
             if (counter >= 6)
             {
@@ -182,6 +180,7 @@ void PcmAudioPlayer::play()
                 break;
             }
             // If player isn't ready, just wait for 500us
+            LOGD("Sleeping %d ...", counter);
             usleep(250);
             ++counter;
         }
@@ -218,18 +217,24 @@ void PcmAudioPlayer::pause()
 {
     std::lock_guard<std::mutex> lk(_stateMutex);
     LOGD("PcmAudioPlayer(%p, %d)::pause ...", this, getId());
-    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PAUSED);
-    SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::pause()");
-    setState(State::PAUSED);
+    if (_state == State::PLAYING)
+    {
+        SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PAUSED);
+        SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::pause()");
+        setState(State::PAUSED);
+    }
 }
 
 void PcmAudioPlayer::resume()
 {
     std::lock_guard<std::mutex> lk(_stateMutex);
-    LOGD("PcmAudioPlayer(%p, %d)::resume ...", this, getId());
-    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
-    SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::resume()");
-    setState(State::PLAYING);
+    if (_state == State::PAUSED)
+    {
+        LOGD("PcmAudioPlayer(%p, %d)::resume ...", this, getId());
+        SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+        SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::resume()");
+        setState(State::PLAYING);
+    }
 }
 
 bool PcmAudioPlayer::initForPlayPcmData(int numChannels, int sampleRate, int bufferSizeInBytes)
@@ -409,11 +414,6 @@ bool PcmAudioPlayer::setPosition(float pos)
 void PcmAudioPlayer::setPlayEventCallback(const PlayEventCallback &playEventCallback)
 {
     _playEventCallback = playEventCallback;
-}
-
-void PcmAudioPlayer::destroy()
-{
-    // PcmAudioPlayer::destroy should be empty implemented
 }
 
 void PcmAudioPlayer::setState(State state)

@@ -35,10 +35,13 @@ THE SOFTWARE.
 #define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
+#define SL_SAFE_DELETE(obj) \
+    if ((obj) != nullptr) { delete (obj); (obj) = nullptr; }
+
 #define SL_DESTROY_OBJ(OBJ)    \
-    if ((OBJ) != NULL) { \
+    if ((OBJ) != nullptr) { \
         (*(OBJ))->Destroy(OBJ); \
-        (OBJ) = NULL; \
+        (OBJ) = nullptr; \
     }
 
 #define SL_RETURN_VAL_IF_FAILED(r, rval, ...) \

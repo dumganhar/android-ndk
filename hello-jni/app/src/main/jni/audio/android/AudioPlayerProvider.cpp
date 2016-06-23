@@ -75,7 +75,10 @@ AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outp
 
 AudioPlayerProvider::~AudioPlayerProvider()
 {
-    UrlAudioPlayer::destroyUnusedPlayers();
+    LOGD("~AudioPlayerProvider()");
+    UrlAudioPlayer::stopAll();
+    UrlAudioPlayer::update();
+
     if (_pcmAudioPlayerPool != nullptr)
     {
         delete _pcmAudioPlayerPool;
@@ -86,43 +89,33 @@ AudioPlayerProvider::~AudioPlayerProvider()
 IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePath)
 {
     // Every time requesting a audio player, try to remove unused UrlAudioPlayers
-    UrlAudioPlayer::destroyUnusedPlayers();
-
-    IAudioPlayer* player = nullptr;
+    UrlAudioPlayer::update();
 
     // Pcm data decoding by OpenSLES API only supports in API level 17 and later.
     if (getSystemAPILevel() < 17)
     {
-        AudioFileInfo info  = getFileInfo(audioFilePath);
-        SLuint32 locatorType = info.assetFd > 0 ? SL_DATALOCATOR_ANDROIDFD : SL_DATALOCATOR_URI;
-        if (info.length <= 0)
+        AudioFileInfo info = getFileInfo(audioFilePath);
+        if (info.isValid())
         {
-            return nullptr;
+            return createUrlAudioPlayer(info);
         }
 
-        auto urlPlayer = new UrlAudioPlayer(_engineItf, _outputMixObject);
-        bool ret = urlPlayer->prepare(audioFilePath, locatorType, info.assetFd, info.start, info.length);
-        if (ret)
-        {
-            player = urlPlayer;
-        }
-        else
-        {
-            delete urlPlayer;
-        }
-        return player;
+        return nullptr;
     }
+
+    IAudioPlayer* player = nullptr;
 
     PcmData pcmData;
     auto iter = _pcmCache.find(audioFilePath);
     if (iter != _pcmCache.end())
     {// Found pcm cache means it was used to be a PcmAudioPlayer
         pcmData = iter->second;
-        auto pcmPlayer = _pcmAudioPlayerPool->findAvailablePlayer(pcmData.numChannels);
-        if (pcmPlayer != nullptr)
+        player = obtainPcmAudioPlayer(audioFilePath, pcmData);
+        if (player == nullptr)
         {
-            pcmPlayer->prepare(audioFilePath, pcmData);
-            player = pcmPlayer;
+            LOGD("1, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
+//            AudioFileInfo info  = getFileInfo(audioFilePath);
+//            player = createUrlAudioPlayer(info);
         }
     }
     else
@@ -131,36 +124,21 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
         // generally PcmAudioPlayer is used for playing short audio like game effects while
         // playing background music uses UrlAudioPlayer
         AudioFileInfo info  = getFileInfo(audioFilePath);
-        if (!info.isValid())
+        if (info.isValid())
         {
-            return nullptr;
-        }
-
-        SLuint32 locatorType = info.assetFd > 0 ? SL_DATALOCATOR_ANDROIDFD : SL_DATALOCATOR_URI;
-
-        if (isSmallFile(info.length))
-        {
-            pcmData = preloadEffect(info);
-            if (pcmData.isValid())
+            if (isSmallFile(info.length))
             {
-                auto pcmPlayer = _pcmAudioPlayerPool->findAvailablePlayer(pcmData.numChannels);
-                if (pcmPlayer != nullptr)
+                pcmData = preloadEffect(info);
+                player = obtainPcmAudioPlayer(info.url, pcmData);
+                if (player == nullptr)
                 {
-                    player = pcmPlayer->prepare(audioFilePath, pcmData) ? pcmPlayer : nullptr;
+                    LOGD("2, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
+                    player = createUrlAudioPlayer(info);
                 }
-            }
-        }
-        else
-        {
-            auto urlPlayer = new UrlAudioPlayer(_engineItf, _outputMixObject);
-            bool ret = urlPlayer->prepare(audioFilePath, locatorType, info.assetFd, info.start, info.length);
-            if (ret)
-            {
-                player = urlPlayer;
             }
             else
             {
-                delete urlPlayer;
+                player = createUrlAudioPlayer(info);
             }
         }
     }
@@ -290,4 +268,42 @@ void AudioPlayerProvider::clearPcmCache(const std::string &audioFilePath)
 void AudioPlayerProvider::clearAllPcmCaches()
 {
     _pcmCache.clear();
+}
+
+PcmAudioPlayer *AudioPlayerProvider::obtainPcmAudioPlayer(const std::string &url,
+                                                          const PcmData &pcmData)
+{
+    PcmAudioPlayer* pcmPlayer = nullptr;
+    if (pcmData.isValid())
+    {
+        pcmPlayer = _pcmAudioPlayerPool->findAvailablePlayer(pcmData.numChannels);
+        if (pcmPlayer != nullptr)
+        {
+            pcmPlayer->prepare(url, pcmData);
+        }
+    }
+    else
+    {
+        LOGE("obtainPcmAudioPlayer failed, pcmData isn't valid!");
+    }
+    return pcmPlayer;
+}
+
+UrlAudioPlayer *AudioPlayerProvider::createUrlAudioPlayer(
+        const AudioPlayerProvider::AudioFileInfo &info)
+{
+    if (info.url.empty())
+    {
+        LOGE("createUrlAudioPlayer failed, url is empty!");
+        return nullptr;
+    }
+
+    SLuint32 locatorType = info.assetFd > 0 ? SL_DATALOCATOR_ANDROIDFD : SL_DATALOCATOR_URI;
+    auto urlPlayer = new UrlAudioPlayer(_engineItf, _outputMixObject);
+    bool ret = urlPlayer->prepare(info.url, locatorType, info.assetFd, info.start, info.length);
+    if (!ret)
+    {
+        SL_SAFE_DELETE(urlPlayer);
+    }
+    return urlPlayer;
 }

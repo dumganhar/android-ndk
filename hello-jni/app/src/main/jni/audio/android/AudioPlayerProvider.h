@@ -28,6 +28,8 @@ THE SOFTWARE.
 #include "audio/android/IAudioPlayer.h"
 #include "audio/android/OpenSLHelper.h"
 #include "audio/android/PcmData.h"
+#include "PcmAudioPlayer.h"
+#include "UrlAudioPlayer.h"
 
 #include <unordered_map>
 
@@ -65,6 +67,9 @@ private:
             return !url.empty() && length > 0;
         }
     };
+
+    PcmAudioPlayer* obtainPcmAudioPlayer(const std::string& url, const PcmData& pcmData);
+    UrlAudioPlayer* createUrlAudioPlayer(const AudioFileInfo& info);
 
     PcmData preloadEffect(const AudioFileInfo& info);
     AudioFileInfo getFileInfo(const std::string& audioFilePath);

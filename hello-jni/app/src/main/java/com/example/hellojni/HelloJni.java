@@ -118,7 +118,7 @@ public class HelloJni extends Activity
 
         String[] files = new String[10];
         for (int i = 0; i < files.length; ++i) {
-            files[i] = String.format("/sdcard/%02d.mp3", i);
+            files[i] = String.format("%02d.mp3", i);
             Log.d(TAG, "load file: " + files[i]);
         }
 //        files[10] = "/sdcard/doorOpen.ogg";
@@ -155,7 +155,7 @@ public class HelloJni extends Activity
         button.setLayoutParams(btnParams);
         layout.addView(button);
 
-        final int delayTime = 30;
+        final int delayTime = 64;
         mHandler = new Handler();
         final Runnable runnable = new Runnable() {
             @Override

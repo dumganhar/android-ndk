@@ -23,13 +23,19 @@ THE SOFTWARE.
 ****************************************************************************/
 
 #define LOG_TAG "UrlAudioPlayer"
+
 #include "audio/android/UrlAudioPlayer.h"
 
-#include <android/log.h>
 #include <math.h>
 #include <unistd.h>
+#include <algorithm> // for std::find
 
 std::vector<UrlAudioPlayer*> UrlAudioPlayer::__unusedPlayers;
+std::vector<UrlAudioPlayer*> UrlAudioPlayer::__playOverPlayers;
+std::vector<UrlAudioPlayer*> UrlAudioPlayer::__allPlayers;
+
+static std::once_flag __onceFlag;
+static int __instanceCount = 0;
 
 UrlAudioPlayer::UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject)
         : _engineItf(engineItf)
@@ -47,11 +53,26 @@ UrlAudioPlayer::UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObjec
         , _isDestroyed(false)
         , _playEventCallback(nullptr)
 {
+    std::call_once(__onceFlag, [](){
+        LOGD("Initializing static variables in UrlAudioPlayer ...");
+        __unusedPlayers.reserve(16);
+        __playOverPlayers.reserve(16);
+        __allPlayers.reserve(16);
+    });
+    ++__instanceCount;
+    LOGD("Current UrlAudioPlayer instance count: %d", __instanceCount);
+    __allPlayers.push_back(this);
 }
 
 UrlAudioPlayer::~UrlAudioPlayer()
 {
     LOGD("~UrlAudioPlayer(): %p", this);
+    --__instanceCount;
+    auto iter = std::find(__allPlayers.begin(), __allPlayers.end(), this);
+    if (iter != __allPlayers.end())
+    {
+        __allPlayers.erase(iter);
+    }
 }
 
 class SLUrlAudioPlayerCallbackProxy {
@@ -81,8 +102,10 @@ void UrlAudioPlayer::playEventCallback(SLPlayItf caller, SLuint32 playEvent)
             if (_playEventCallback != nullptr)
             {
                 _playEventCallback(State::OVER);
-                __unusedPlayers.push_back(this);
             }
+            _playOverMutex.lock();
+            __playOverPlayers.push_back(this);
+            _playOverMutex.unlock();
         }
     }
 }
@@ -106,23 +129,30 @@ void UrlAudioPlayer::stop()
         if (_playEventCallback != nullptr)
         {
             _playEventCallback(_state);
-            __unusedPlayers.push_back(this);
         }
+        destroy();
+        __unusedPlayers.push_back(this);
     }
 }
 
 void UrlAudioPlayer::pause()
 {
-    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PAUSED);
-    SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::pause failed");
-    setState(State::PAUSED);
+    if (_state == State::PLAYING)
+    {
+        SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PAUSED);
+        SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::pause failed");
+        setState(State::PAUSED);
+    }
 }
 
 void UrlAudioPlayer::resume()
 {
-    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
-    SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::resume failed");
-    setState(State::PLAYING);
+    if (_state == State::PAUSED)
+    {
+        SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+        SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::resume failed");
+        setState(State::PLAYING);
+    }
 }
 
 void UrlAudioPlayer::play()
@@ -261,8 +291,7 @@ bool UrlAudioPlayer::prepare(const std::string& url, SLuint32 locatorType, int a
 
 void UrlAudioPlayer::rewind()
 {
-    stop();
-    play();
+// Not supported currently. since cocos audio engine will new -> prepare -> play again.
 }
 
 float UrlAudioPlayer::getVolume() const
@@ -284,18 +313,33 @@ bool UrlAudioPlayer::isLoop() const
     return _isLoop;
 }
 
-void UrlAudioPlayer::destroyUnusedPlayers()
+void UrlAudioPlayer::update()
 {
-    if (__unusedPlayers.empty())
+    if (!__playOverPlayers.empty())
     {
-        return;
+        for (auto player : __playOverPlayers)
+        {
+            player->destroy();
+            delete player;
+        }
+        __playOverPlayers.clear();
     }
 
-    for (auto player : __unusedPlayers)
+    if (!__unusedPlayers.empty())
     {
-        delete player;
+        for (auto player : __unusedPlayers) {
+            delete player;
+        }
+        __unusedPlayers.clear();
     }
-    __unusedPlayers.clear();
+}
+
+void UrlAudioPlayer::stopAll()
+{
+    for (auto player : __allPlayers)
+    {
+        player->stop();
+    }
 }
 
 void UrlAudioPlayer::destroy()
@@ -305,10 +349,9 @@ void UrlAudioPlayer::destroy()
         LOGD("UrlAudioPlayer::destroy() %p", this);
         _isDestroyed = true;
         SL_DESTROY_OBJ(_playObj);
-        LOGD("UrlAudioPlayer::destroy 02");
+
         if (_assetFd > 0) {
-            LOGD("UrlAudioPlayer::destroy 03");
-            close(_assetFd);
+            ::close(_assetFd);
             _assetFd = 0;
         }
         LOGD("UrlAudioPlayer::destroy end");

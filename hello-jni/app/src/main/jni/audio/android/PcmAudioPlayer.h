@@ -59,8 +59,6 @@ public:
 
     virtual void setPlayEventCallback(const PlayEventCallback& playEventCallback) override;
 
-    virtual bool isOwnedByPool() const override { return true; };
-    virtual void destroy() override;
     // Override Functions End
 
     inline int getChannelCount() const { return _numChannels; };
@@ -103,7 +101,6 @@ private:
     float _volume;
     bool _isLoop;
     State _state;
-    bool _isWaiting;
     bool _isDestroyed;
 
     std::mutex _stateMutex;

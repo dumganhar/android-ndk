@@ -101,22 +101,6 @@ AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobject
     return JNI_TRUE;
 }
 
-static void clearNotValidUrlAudioPlayers()
-{
-    std::vector<IAudioPlayer*> toRemovePlayers;
-    for (auto player : __audioPlayers)
-    {
-        LOGD("delete player: %p", player);
-        toRemovePlayers.push_back(player);
-        delete player;
-    }
-
-    for (auto toRemovePlayer : toRemovePlayers)
-    {
-        __audioPlayers.erase(toRemovePlayer);
-    }
-}
-
 JNIEXPORT
 jboolean
 JNICALL
@@ -126,19 +110,14 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
         __fileIndex = 0;
     }
     char filePath[256] = {0};
-    sprintf(filePath, "/sdcard/%02d.mp3", __fileIndex);
+    sprintf(filePath, "%02d.mp3", __fileIndex);
     __currentFilePath = filePath;
 //    __currentFilePath = "doorOpen.ogg";//filePath;
 
     ++__fileIndex;
 
-    clearNotValidUrlAudioPlayers();
-
     auto player = __audioPlayerProvider->getAudioPlayer(__currentFilePath);
     if (player != nullptr) {
-        if (!player->isOwnedByPool()) {
-            __audioPlayers.insert(player);
-        }
         player->play();
     } else {
         LOGE("Oops, player is null ...");

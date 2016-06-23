@@ -58,12 +58,12 @@ struct PcmData
         pcmBuffer = nullptr;
     }
 
-    inline bool isValid()
+    inline bool isValid() const
     {
         return numChannels > 0 && sampleRate > 0 && bitsPerSample > 0 && containerSize > 0 && numFrames > 0 && pcmBuffer != nullptr;
     }
 
-    inline std::string toString()
+    inline std::string toString() const
     {
         std::string ret;
         char buf[256] = {0};

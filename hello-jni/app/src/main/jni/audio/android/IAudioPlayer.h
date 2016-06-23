@@ -70,9 +70,6 @@ public:
     // @note: STOPPED event is invoked in main thread
     //        OVER event is invoked in sub thread
     virtual void setPlayEventCallback(const PlayEventCallback& playEventCallback) = 0;
-
-    virtual bool isOwnedByPool() const = 0;
-    virtual void destroy() = 0;
 };
 
 #endif //COCOS_IAUDIOPLAYER_H

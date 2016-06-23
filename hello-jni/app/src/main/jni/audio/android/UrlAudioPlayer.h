@@ -33,8 +33,6 @@ THE SOFTWARE.
 class UrlAudioPlayer : public IAudioPlayer
 {
 public:
-    static void destroyUnusedPlayers();
-
     virtual ~UrlAudioPlayer();
 
     // Override Functions Begin
@@ -61,14 +59,16 @@ public:
 
     virtual void setPlayEventCallback(const PlayEventCallback& playEventCallback) override;
 
-    virtual bool isOwnedByPool() const override { return false; };
-    virtual void destroy() override ;
     // Override Functions EndOv
 
 private:
+    static void update();
+
     UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
 
     bool prepare(const std::string& url, SLuint32 locatorType, int assetFd, int start, int length);
+    static void stopAll();
+    void destroy();
 
     inline void setState(State state) { _state = state; };
 
@@ -96,8 +96,12 @@ private:
     PlayEventCallback _playEventCallback;
 
     std::mutex _stateMutex;
+    std::mutex _playOverMutex;
 
     static std::vector<UrlAudioPlayer*> __unusedPlayers;
+    static std::vector<UrlAudioPlayer*> __playOverPlayers;
+    static std::vector<UrlAudioPlayer*> __allPlayers;
+
     friend class SLUrlAudioPlayerCallbackProxy;
     friend class AudioPlayerProvider;
 };
