@@ -85,7 +85,6 @@ AudioDecoder::AudioDecoder(SLEngineItf engineItf, const std::string &url, int sa
         : _engineItf(engineItf)
         , _url(url)
         , _playObj(nullptr)
-        , _pcmMetaData(nullptr)
         , _formatQueried(false)
         , _prefetchError(false)
         , _counter(0)
@@ -151,11 +150,6 @@ bool AudioDecoder::start(const FdGetterCallback& fdGetterCallback)
     for (int i=0 ; i < NUM_EXPLICIT_INTERFACES_FOR_PLAYER ; i++) {
         required[i] = SL_BOOLEAN_FALSE;
         iidArray[i] = SL_IID_NULL;
-    }
-
-    /* allocate memory to receive the PCM format metadata */
-    if (!_pcmMetaData) {
-        _pcmMetaData = (SLMetadataInfo*) malloc(PCM_METADATA_VALUE_SIZE);
     }
 
     _formatQueried = false;
@@ -632,7 +626,7 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
         return;
     }
     SLresult res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _sampleRateKeyIndex,
-                                                PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+                                                PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
 
     SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _sampleRateKeyIndex failed")
     // Note: here we could verify the following:
@@ -640,27 +634,27 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
     //         pcmMetaData->size == sizeof(SLuint32)
     //       but the call was successful for the PCM format keys, so those conditions are implied
 
-    _result.sampleRate = *((SLuint32*)_pcmMetaData->data);
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _numChannelsKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    _result.sampleRate = *((SLuint32*)_pcmMetaData.data);
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _numChannelsKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
     SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _numChannelsKeyIndex failed")
 
-    _result.numChannels = *((SLuint32*)_pcmMetaData->data);
+    _result.numChannels = *((SLuint32*)_pcmMetaData.data);
 
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _bitsPerSampleKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _bitsPerSampleKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
     SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _bitsPerSampleKeyIndex failed")
-    _result.bitsPerSample = *((SLuint32*)_pcmMetaData->data);
+    _result.bitsPerSample = *((SLuint32*)_pcmMetaData.data);
 
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _containerSizeKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _containerSizeKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
     SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _containerSizeKeyIndex failed")
-    _result.containerSize = *((SLuint32*)_pcmMetaData->data);
+    _result.containerSize = *((SLuint32*)_pcmMetaData.data);
 
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _channelMaskKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _channelMaskKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
     SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _channelMaskKeyIndex failed")
-    _result.channelMask = *((SLuint32*)_pcmMetaData->data);
+    _result.channelMask = *((SLuint32*)_pcmMetaData.data);
 
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _endiannessKeyIndex, PCM_METADATA_VALUE_SIZE, _pcmMetaData);
+    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _endiannessKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
     SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _endiannessKeyIndex failed")
-    _result.endianness = *((SLuint32*)_pcmMetaData->data);
+    _result.endianness = *((SLuint32*)_pcmMetaData.data);
 
     _formatQueried = true;
 }

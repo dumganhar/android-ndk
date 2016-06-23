@@ -143,10 +143,13 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
         if (isSmallFile(info.length))
         {
             pcmData = preloadEffect(info);
-            auto pcmPlayer = _pcmAudioPlayerPool->findAvailablePlayer(pcmData.numChannels);
-            if (pcmPlayer != nullptr)
+            if (pcmData.isValid())
             {
-                player = pcmPlayer->prepare(audioFilePath, pcmData) ? pcmPlayer : nullptr;
+                auto pcmPlayer = _pcmAudioPlayerPool->findAvailablePlayer(pcmData.numChannels);
+                if (pcmPlayer != nullptr)
+                {
+                    player = pcmPlayer->prepare(audioFilePath, pcmData) ? pcmPlayer : nullptr;
+                }
             }
         }
         else

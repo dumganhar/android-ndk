@@ -69,7 +69,7 @@ private:
     char _pcmData[NB_BUFFERS_IN_QUEUE * BUFFER_SIZE_IN_BYTES];
 
     /* used to query metadata values */
-    SLMetadataInfo* _pcmMetaData;
+    SLMetadataInfo _pcmMetaData;
     /* we only want to query / display the PCM format once */
     bool _formatQueried;
     /* Used to signal prefetching failures */
