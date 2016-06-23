@@ -22,18 +22,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-#include "AudioDecoder.h"
-#include "AudioResampler.h"
-#include "PcmBufferProvider.h"
+#define LOG_TAG "AudioDecoder"
 
-#include <android/log.h>
+#include "audio/android/AudioDecoder.h"
+#include "audio/android/AudioResampler.h"
+#include "audio/android/PcmBufferProvider.h"
+
+
 #include <unistd.h>
 
 using namespace cocos2d;
-
-#define LOG_TAG "AudioDecoder"
-#define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
-#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
 /* size of the struct to retrieve the PCM format metadata values: the values we're interested in
  * are SLuint32, but it is saved in the data field of a SLMetadataInfo, hence the larger size.
@@ -106,12 +104,6 @@ AudioDecoder::AudioDecoder(SLEngineItf engineItf, const std::string &url, int sa
 
 AudioDecoder::~AudioDecoder()
 {
-    if (_pcmMetaData != nullptr)
-    {
-        free(_pcmMetaData);
-        _pcmMetaData = nullptr;
-    }
-
     if (_assetFd > 0)
     {
         ::close(_assetFd);
@@ -398,12 +390,6 @@ bool AudioDecoder::start(const FdGetterCallback& fdGetterCallback)
     SL_DESTROY_OBJ(_playObj);
 
     LOGD("After destroy player ...");
-
-    if (_pcmMetaData != nullptr)
-    {
-        free(_pcmMetaData);
-        _pcmMetaData = nullptr;
-    }
 
     _result.numFrames = _result.pcmBuffer->size() / _result.numChannels / (_result.bitsPerSample / 8);
 

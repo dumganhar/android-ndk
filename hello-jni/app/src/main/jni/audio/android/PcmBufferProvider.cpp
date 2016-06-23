@@ -22,12 +22,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-#include <android/log.h>
-#include "PcmBufferProvider.h"
+#define LOG_TAG "PcmBufferProvider"
 
-#define LOG_TAG "cjh"
-#define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
-#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
+#include "audio/android/PcmBufferProvider.h"
+
+#include "audio/android/OpenSLHelper.h"
 
 namespace cocos2d {
 

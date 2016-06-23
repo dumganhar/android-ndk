@@ -25,8 +25,8 @@ THE SOFTWARE.
 #ifndef COCOS_AUDIOPLAYER_H
 #define COCOS_AUDIOPLAYER_H
 
-#include "IAudioPlayer.h"
-#include "OpenSLHelper.h"
+#include "audio/android/IAudioPlayer.h"
+#include "audio/android/OpenSLHelper.h"
 #include <mutex>
 #include <vector>
 

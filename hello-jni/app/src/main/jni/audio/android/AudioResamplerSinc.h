@@ -21,8 +21,8 @@
 #include <sys/types.h>
 //#include <cutils/log.h>
 
-#include "AudioResampler.h"
-#include "AudioBufferProvider.h"
+#include "audio/android/AudioResampler.h"
+#include "audio/android/AudioBufferProvider.h"
 
 namespace cocos2d {
 

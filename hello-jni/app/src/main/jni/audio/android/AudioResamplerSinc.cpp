@@ -30,7 +30,7 @@
 //#include <utils/Log.h>
 //#include <audio_utils/primitives.h>
 
-#include "AudioResamplerSinc.h"
+#include "audio/android/AudioResamplerSinc.h"
 
 #if 0//cjhdefined(__clang__) && !__has_builtin(__builtin_assume_aligned)
 #define __builtin_assume_aligned(p, a) \
@@ -62,7 +62,7 @@ namespace cocos2d {
  * cmd-line: fir -l 7 -s 48000 -c 20478
  */
 const uint32_t AudioResamplerSinc::mFirCoefsUp[] __attribute__ ((aligned (32))) = {
-#include "AudioResamplerSincUp.h"
+#include "audio/android/AudioResamplerSincUp.h"
 };
 
 /*
@@ -70,7 +70,7 @@ const uint32_t AudioResamplerSinc::mFirCoefsUp[] __attribute__ ((aligned (32))) 
  * cmd-line: fir -l 7 -s 48000 -c 17189
  */
 const uint32_t AudioResamplerSinc::mFirCoefsDown[] __attribute__ ((aligned (32))) = {
-#include "AudioResamplerSincDown.h"
+#include "audio/android/AudioResamplerSincDown.h"
 };
 
 // we use 15 bits to interpolate between these samples

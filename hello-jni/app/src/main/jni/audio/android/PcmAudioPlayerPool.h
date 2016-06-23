@@ -24,11 +24,9 @@ THE SOFTWARE.
 #ifndef COCOS_AUDIOPLAYERPOOL_H
 #define COCOS_AUDIOPLAYERPOOL_H
 
-#include "OpenSLHelper.h"
+#include "audio/android/OpenSLHelper.h"
 
 #include <vector>
-
-#define AUDIO_PLAYER_POOL_SIZE (10)
 
 class PcmAudioPlayer;
 

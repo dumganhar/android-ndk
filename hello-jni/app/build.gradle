@@ -17,7 +17,7 @@ model {
             moduleName = 'hello-jni'
             toolchain = 'clang'
             CFlags.addAll(['-Wall'])
-            cppFlags.addAll(['-std=c++11', '-Wall'])
+            cppFlags.addAll(['-std=c++11', '-Wall', "-I" + file("src/main/jni").absolutePath])
             ldLibs.addAll(['log', 'OpenSLES', 'android'])
             stl 'gnustl_static'
         }

@@ -25,9 +25,9 @@ THE SOFTWARE.
 #ifndef COCOS_PCMAUDIOPLAYER_H
 #define COCOS_PCMAUDIOPLAYER_H
 
-#include "IAudioPlayer.h"
-#include "OpenSLHelper.h"
-#include "PcmData.h"
+#include "audio/android/IAudioPlayer.h"
+#include "audio/android/OpenSLHelper.h"
+#include "audio/android/PcmData.h"
 
 #include <mutex>
 #include <condition_variable>

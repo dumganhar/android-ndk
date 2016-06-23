@@ -22,15 +22,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-#include "PcmAudioPlayer.h"
+#define LOG_TAG "PcmAudioPlayer"
 
-#include <android/log.h>
+#include "audio/android/PcmAudioPlayer.h"
+
 #include <math.h>
 #include <unistd.h>
-
-#define LOG_TAG "PcmAudioPlayer"
-#define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
-#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
 #define AUDIO_PLAYER_BUFFER_COUNT (2)
 
@@ -122,6 +119,8 @@ void PcmAudioPlayer::samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq)
 {
     // FIXME: PcmAudioPlayer instance may be destroyed, we need to find a way to wait...
     // It's in sub thread
+    _stateMutex.lock();
+
     int pcmDataSize = _decResult.pcmBuffer ? _decResult.pcmBuffer->size() : 0;
 
     if (_state == State::STOPPED || _currentBufferIndex >= pcmDataSize)
@@ -138,7 +137,9 @@ void PcmAudioPlayer::samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq)
             _isWaiting = true;
             {
                 std::unique_lock<std::mutex> lk(_enqueueMutex);
+                _stateMutex.unlock();
                 _enqueueCond.wait(lk);
+                _stateMutex.lock();
             }
             _isWaiting = false;
 
@@ -149,6 +150,7 @@ void PcmAudioPlayer::samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq)
                 LOGD("PcmAudioPlayer (%p) was destroyed!", this);
                 // Reset _isDestroyed to false
                 _isDestroyed = false;
+                _stateMutex.unlock();
                 return;
             }
 
@@ -157,10 +159,12 @@ void PcmAudioPlayer::samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq)
     }
 
     enqueue();
+    _stateMutex.unlock();
 }
 
 void PcmAudioPlayer::play()
 {
+    std::lock_guard<std::mutex> lk(_stateMutex);
     if (_state == State::PLAYING)
     {
         LOGE("PcmAudioPlayer (%p, %d) is playing, ignore play ...", this, getId());
@@ -196,6 +200,7 @@ void PcmAudioPlayer::play()
 
 void PcmAudioPlayer::stop()
 {
+    std::lock_guard<std::mutex> lk(_stateMutex);
     LOGD("PcmAudioPlayer(%p, %d)::stop ...", this, getId());
     if (_state == State::PLAYING)
     {
@@ -211,6 +216,7 @@ void PcmAudioPlayer::stop()
 
 void PcmAudioPlayer::pause()
 {
+    std::lock_guard<std::mutex> lk(_stateMutex);
     LOGD("PcmAudioPlayer(%p, %d)::pause ...", this, getId());
     SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PAUSED);
     SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::pause()");
@@ -219,6 +225,7 @@ void PcmAudioPlayer::pause()
 
 void PcmAudioPlayer::resume()
 {
+    std::lock_guard<std::mutex> lk(_stateMutex);
     LOGD("PcmAudioPlayer(%p, %d)::resume ...", this, getId());
     SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
     SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::resume()");
@@ -310,6 +317,7 @@ bool PcmAudioPlayer::initForPlayPcmData(int numChannels, int sampleRate, int buf
 
 bool PcmAudioPlayer::prepare(const std::string& url, const PcmData &decResult)
 {
+    std::lock_guard<std::mutex> lk(_stateMutex);
     if (_state == State::PLAYING)
     {
         LOGE("PcmAudioPlayer (%s) is playing, ignore play ...", _url.c_str());
@@ -356,7 +364,6 @@ void PcmAudioPlayer::rewind()
 
 void PcmAudioPlayer::setVolume(float volume)
 {
-    std::lock_guard<std::mutex> lk(_stateMutex);
     _volume = volume;
     int dbVolume = 2000 * log10(volume);
     if(dbVolume < SL_MILLIBEL_MIN){
@@ -373,7 +380,6 @@ float PcmAudioPlayer::getVolume() const
 
 void PcmAudioPlayer::setLoop(bool isLoop)
 {
-    std::lock_guard<std::mutex> lk(_stateMutex);
     _isLoop = isLoop;
 }
 
@@ -412,6 +418,5 @@ void PcmAudioPlayer::destroy()
 
 void PcmAudioPlayer::setState(State state)
 {
-    std::lock_guard<std::mutex> lk(_stateMutex);
     _state = state;
 }

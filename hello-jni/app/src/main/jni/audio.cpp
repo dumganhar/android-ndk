@@ -5,9 +5,11 @@
 
 #include "audio.h"
 
-#include "AudioPlayerProvider.h"
+#include "audio/android/AudioPlayerProvider.h"
+#include "audio/android/IAudioPlayer.h"
 
 #include <set>
+#include <vector>
 #include <android/log.h>
 
 #define LOG_TAG "cjh"

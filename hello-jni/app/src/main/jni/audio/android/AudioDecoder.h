@@ -25,8 +25,8 @@ THE SOFTWARE.
 #ifndef COCOS_AUDIODECODER_H
 #define COCOS_AUDIODECODER_H
 
-#include "OpenSLHelper.h"
-#include "PcmData.h"
+#include "audio/android/OpenSLHelper.h"
+#include "audio/android/PcmData.h"
 
 #include <mutex>
 #include <condition_variable>

@@ -21,14 +21,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-#include "PcmAudioPlayerPool.h"
-#include "PcmAudioPlayer.h"
-#include "IAudioPlayer.h"
-
-#include <android/log.h>
 #define LOG_TAG "PcmAudioPlayerPool"
-#define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
-#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
+
+#include "audio/android/PcmAudioPlayerPool.h"
+#include "audio/android/PcmAudioPlayer.h"
+
+#define AUDIO_PLAYER_POOL_SIZE (20)
 
 PcmAudioPlayerPool::PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames)
         : _engineItf(engineItf)

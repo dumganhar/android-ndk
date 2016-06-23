@@ -25,10 +25,15 @@ THE SOFTWARE.
 #ifndef COCOS_OPENSLHELPER_H
 #define COCOS_OPENSLHELPER_H
 
+#include <android/log.h>
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
+
 #include <functional>
 #include <string>
+
+#define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
+#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
 #define SL_DESTROY_OBJ(OBJ)    \
     if ((OBJ) != NULL) { \
@@ -38,13 +43,13 @@ THE SOFTWARE.
 
 #define SL_RETURN_VAL_IF_FAILED(r, rval, ...) \
     if (r != SL_RESULT_SUCCESS) {\
-        LOGE("SL result %d is wrong, msg: %s", r, __VA_ARGS__); \
+        LOGE(__VA_ARGS__); \
         return rval; \
     }
 
 #define SL_RETURN_IF_FAILED(r, ...) \
     if (r != SL_RESULT_SUCCESS) {\
-        LOGE("SL result %d is wrong, msg: %s", r, __VA_ARGS__); \
+        LOGE(__VA_ARGS__); \
         return; \
     }
 

@@ -22,18 +22,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-#include <android/log.h>
+#define LOG_TAG "AudioPlayerProvider"
+
+#include "audio/android/AudioPlayerProvider.h"
+#include "audio/android/UrlAudioPlayer.h"
+#include "audio/android/AudioDecoder.h"
+#include "audio/android/PcmAudioPlayer.h"
+#include "audio/android/PcmAudioPlayerPool.h"
+
 #include <sys/system_properties.h>
 #include <stdlib.h>
-#include "AudioPlayerProvider.h"
-#include "UrlAudioPlayer.h"
-#include "AudioDecoder.h"
-#include "PcmAudioPlayer.h"
-#include "PcmAudioPlayerPool.h"
-
-#define LOG_TAG "AudioPlayerProvider"
-#define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
-#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
 static int getSystemAPILevel()
 {
@@ -276,8 +274,8 @@ AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(const std::s
 
 bool AudioPlayerProvider::isSmallFile(long fileSize)
 {
-    //TODO: If file size is smaller than 30k, we think it's a small file. This value should be set by developers.
-    return fileSize < 30000;
+    //TODO: If file size is smaller than 100k, we think it's a small file. This value should be set by developers.
+    return fileSize < 100000;
 }
 
 void AudioPlayerProvider::clearPcmCache(const std::string &audioFilePath)

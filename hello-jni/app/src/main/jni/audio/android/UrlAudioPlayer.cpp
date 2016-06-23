@@ -22,15 +22,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-#include "UrlAudioPlayer.h"
+#define LOG_TAG "UrlAudioPlayer"
+#include "audio/android/UrlAudioPlayer.h"
 
 #include <android/log.h>
 #include <math.h>
 #include <unistd.h>
-
-#define LOG_TAG "UrlAudioPlayer"
-#define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
-#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
 std::vector<UrlAudioPlayer*> UrlAudioPlayer::__unusedPlayers;
 

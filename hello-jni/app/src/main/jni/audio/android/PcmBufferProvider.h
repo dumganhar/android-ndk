@@ -25,7 +25,7 @@ THE SOFTWARE.
 #ifndef COCOS_BUFFERPROVIDER_H
 #define COCOS_BUFFERPROVIDER_H
 
-#include "AudioBufferProvider.h"
+#include "audio/android/AudioBufferProvider.h"
 
 #include <stddef.h>
 #include <stdio.h>
