@@ -344,10 +344,16 @@ UrlAudioPlayer *AudioPlayerProvider::createUrlAudioPlayer(
 
 void AudioPlayerProvider::pause()
 {
-    _pcmAudioPlayerPool->releaseUnusedPlayers();
+    if (_pcmAudioPlayerPool != nullptr)
+    {
+        _pcmAudioPlayerPool->releaseUnusedPlayers();
+    }
 }
 
 void AudioPlayerProvider::resume()
 {
-    _pcmAudioPlayerPool->prepareEnoughPlayers();
+    if (_pcmAudioPlayerPool != nullptr)
+    {
+        _pcmAudioPlayerPool->prepareEnoughPlayers();
+    }
 }
