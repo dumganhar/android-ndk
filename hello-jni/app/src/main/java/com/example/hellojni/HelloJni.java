@@ -342,12 +342,14 @@ public class HelloJni extends Activity
 
     @Override
     protected void onPause() {
+        Log.d(TAG, "onPause ...");
         super.onPause();
         jniOnPause();
     }
 
     @Override
     protected void onResume() {
+        Log.d(TAG, "onResume ...");
         super.onResume();
         jniOnResume();
     }

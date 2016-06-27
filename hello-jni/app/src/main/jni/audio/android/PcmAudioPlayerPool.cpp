@@ -43,7 +43,7 @@ PcmAudioPlayerPool::~PcmAudioPlayerPool()
     LOGD("PcmAudioPlayerPool::destroy begin ...");
     for (const auto& player : _audioPlayerPool)
     {
-        LOGD("delete PcmAudioPlayer (%p) ...", player);
+        LOGD("~PcmAudioPlayerPool(): delete PcmAudioPlayer (%p) ...", player);
         delete player;
     }
     _audioPlayerPool.clear();
@@ -114,6 +114,7 @@ void PcmAudioPlayerPool::prepareEnoughPlayers()
         return;
     }
 
+    LOGD("PcmAudioPlayerPool::prepareEnoughPlayers, toAddPlayerCount: %d", (int)toAddPlayerCount);
     for (int i = 0; i < toAddPlayerCount; ++i)
     {
         auto player = createPlayer(2);
@@ -140,17 +141,22 @@ void PcmAudioPlayerPool::prepareEnoughPlayers()
 void PcmAudioPlayerPool::releaseUnusedPlayers()
 {
     LOGD("PcmAudioPlayerPool::releaseUnusedPlayers begin ...");
-    size_t len = _audioPlayerPool.size();
     PcmAudioPlayer* player = nullptr;
-    for (size_t i = len-1; i >= 0; --i)
+    auto iter = std::begin(_audioPlayerPool);
+    while (iter != std::end(_audioPlayerPool))
     {
-        player = _audioPlayerPool[i];
+        player = (*iter);
         if (player->getState() == IAudioPlayer::State::INITIALIZED)
         {
-            LOGD("PcmAudioPlayerPool::releaseUnusedPlayers, delete PcmAudioPlayer (%p, index:%d) ...", player, i);
+            LOGD("PcmAudioPlayerPool::releaseUnusedPlayers, delete PcmAudioPlayer (%p) ...", player);
             delete player;
-            _audioPlayerPool.erase(_audioPlayerPool.begin() + i);
+            iter = _audioPlayerPool.erase(iter);
+        }
+        else
+        {
+            ++iter;
         }
     }
-    LOGD("PcmAudioPlayerPool::releaseUnusedPlayers end ...");
+
+    LOGD("PcmAudioPlayerPool::releaseUnusedPlayers end, remain: %d ...", (int)_audioPlayerPool.size());
 }

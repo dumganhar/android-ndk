@@ -52,8 +52,7 @@ JNIEXPORT void JNICALL
 Java_com_example_hellojni_HelloJni_jniOnPause(JNIEnv *env, jobject instance) {
     if (__audioPlayerProvider != nullptr)
     {
-        // TODO:
-//        __audioPlayerProvider->pause();
+        __audioPlayerProvider->pause();
     }
 }
 
@@ -61,8 +60,7 @@ JNIEXPORT void JNICALL
 Java_com_example_hellojni_HelloJni_jniOnResume(JNIEnv *env, jobject instance) {
     if (__audioPlayerProvider != nullptr)
     {
-//        TODO:
-//        __audioPlayerProvider->resume();
+        __audioPlayerProvider->resume();
     }
 };
 
