@@ -161,7 +161,7 @@ public class HelloJni extends Activity
             @Override
             public void run() {
                 mHandler.postDelayed(this, delayTime);
-                playEffect();
+//                playEffect();
             }
         };
         mHandler.postDelayed(runnable, delayTime);
@@ -207,6 +207,8 @@ public class HelloJni extends Activity
 
     private native boolean jniCreate(int sampleRate, int bufferSizeInFrames);
     private native boolean jniShutdown();
+    private native void jniOnPause();
+    private native void jniOnResume();
     private native boolean jniLoadSamples(AssetManager manager, String[] files);
     private native boolean jniPlaySample(int playIndex, boolean playState);
 
@@ -336,5 +338,17 @@ public class HelloJni extends Activity
                 return;
             }
         }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        jniOnPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        jniOnResume();
     }
 }

@@ -68,10 +68,9 @@ private:
     PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
     virtual ~PcmAudioPlayer();
 
-    bool initForPlayPcmData(int numChannels, int sampleRate, int bufferSizeInBytes);
+    bool init(int numChannels, int sampleRate, int bufferSizeInBytes);
 
     bool prepare(const std::string& url, const PcmData& decResult);
-    void reset();
 
     void onPlayOver();
     void onWakeup();

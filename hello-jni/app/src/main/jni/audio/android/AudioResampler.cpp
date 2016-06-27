@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <pthread.h>
+#include <new>
 //#include <cutils/log.h>
 //#include <cutils/properties.h>
 //#include <audio_utils/primitives.h>
@@ -217,22 +218,22 @@ AudioResampler* AudioResampler::create(audio_format_t format, int inChannelCount
     case LOW_QUALITY:
         ALOGV("Create linear Resampler");
         LOG_ALWAYS_FATAL_IF(format != AUDIO_FORMAT_PCM_16_BIT, "invalid pcm format");
-        resampler = new AudioResamplerOrder1(inChannelCount, sampleRate);
+        resampler = new (std::nothrow) AudioResamplerOrder1(inChannelCount, sampleRate);
         break;
     case MED_QUALITY:
         ALOGV("Create cubic Resampler");
         LOG_ALWAYS_FATAL_IF(format != AUDIO_FORMAT_PCM_16_BIT, "invalid pcm format");
-        resampler = new AudioResamplerCubic(inChannelCount, sampleRate);
+        resampler = new (std::nothrow) AudioResamplerCubic(inChannelCount, sampleRate);
         break;
     case HIGH_QUALITY:
         ALOGV("Create HIGH_QUALITY sinc Resampler");
         LOG_ALWAYS_FATAL_IF(format != AUDIO_FORMAT_PCM_16_BIT, "invalid pcm format");
-        resampler = new AudioResamplerSinc(inChannelCount, sampleRate);
+        resampler = new (std::nothrow) AudioResamplerSinc(inChannelCount, sampleRate);
         break;
     case VERY_HIGH_QUALITY:
         ALOGV("Create VERY_HIGH_QUALITY sinc Resampler = %d", quality);
         LOG_ALWAYS_FATAL_IF(format != AUDIO_FORMAT_PCM_16_BIT, "invalid pcm format");
-        resampler = new AudioResamplerSinc(inChannelCount, sampleRate, quality);
+        resampler = new (std::nothrow) AudioResamplerSinc(inChannelCount, sampleRate, quality);
         break;
     }
 

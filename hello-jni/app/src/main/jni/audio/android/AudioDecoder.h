@@ -105,6 +105,8 @@ private:
     int _assetFd;
 
     friend class SLAudioDecoderCallbackProxy;
+
+    void interleave();
 };
 
 

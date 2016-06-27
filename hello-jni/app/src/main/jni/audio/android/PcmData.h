@@ -41,41 +41,17 @@ struct PcmData
     int endianness;
     int numFrames;
 
-    PcmData()
-    {
-        reset();
-    }
+    PcmData();
+    ~PcmData();
+    PcmData(const PcmData& o);
+    PcmData(PcmData&& o);
 
-    inline void reset()
-    {
-        numChannels = -1;
-        sampleRate = -1;
-        bitsPerSample = -1;
-        containerSize = -1;
-        channelMask = -1;
-        endianness = -1;
-        numFrames = -1;
-        pcmBuffer = nullptr;
-    }
+    PcmData& operator= (const PcmData& o);
+    PcmData& operator= (PcmData&& o);
 
-    inline bool isValid() const
-    {
-        return numChannels > 0 && sampleRate > 0 && bitsPerSample > 0 && containerSize > 0 && numFrames > 0 && pcmBuffer != nullptr;
-    }
-
-    inline std::string toString() const
-    {
-        std::string ret;
-        char buf[256] = {0};
-
-        snprintf(buf, sizeof(buf),
-                 "numChannels: %d, sampleRate: %d, bitPerSample: %d, containerSize: %d, channelMask: %d, endianness: %d, numFrames: %d",
-                 numChannels, sampleRate, bitsPerSample, containerSize, channelMask, endianness, numFrames
-        );
-
-        ret = buf;
-        return ret;
-    }
+    void reset();
+    bool isValid() const;
+    std::string toString() const;
 };
 
 #endif //COCOS_PCMDATA_H

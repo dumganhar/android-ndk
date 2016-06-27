@@ -37,6 +37,8 @@ public:
     virtual ~PcmAudioPlayerPool();
 
     PcmAudioPlayer* findAvailablePlayer(int numChannels);
+    void prepareEnoughPlayers();
+    void releaseUnusedPlayers();
 
 private:
     PcmAudioPlayer* createPlayer(int numChannels);

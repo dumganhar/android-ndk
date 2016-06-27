@@ -98,10 +98,6 @@ private:
     std::mutex _stateMutex;
     std::mutex _playOverMutex;
 
-    static std::vector<UrlAudioPlayer*> __unusedPlayers;
-    static std::vector<UrlAudioPlayer*> __playOverPlayers;
-    static std::vector<UrlAudioPlayer*> __allPlayers;
-
     friend class SLUrlAudioPlayerCallbackProxy;
     friend class AudioPlayerProvider;
 };

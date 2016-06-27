@@ -28,8 +28,11 @@ THE SOFTWARE.
 
 #include <math.h>
 #include <unistd.h>
+#include <algorithm> // for std::find
 
 #define AUDIO_PLAYER_BUFFER_COUNT (2)
+
+static std::once_flag __onceFlag;
 
 static std::vector<char> __silenceData;
 
@@ -68,13 +71,17 @@ PcmAudioPlayer::~PcmAudioPlayer()
     LOGD("~PcmAudioPlayer() (%p)", this);
     _isDestroyed = true;
 
-    while (_isDestroyed)
+    if (_state != State::INVALID)
     {
-        _enqueueCond.notify_one();
-        // wait 1ms to wakeup sub thread
+        while (_isDestroyed) {
+            _enqueueCond.notify_one();
+            // wait 1ms to wakeup sub thread
+            usleep(1 * 1000);
+        }
+
+        // Sleep another 1ms to wait sub thread to exit
         usleep(1 * 1000);
     }
-
     LOGD("~PcmAudioPlayer(), before destroy play object");
     SL_DESTROY_OBJ(_playObj);
     LOGD("~PcmAudioPlayer() end");
@@ -91,7 +98,11 @@ void PcmAudioPlayer::onPlayOver()
         }
     }
 
-    reset();
+    setId(-1);
+    setLoop(false);
+    _currentBufferIndex = 0;
+    _url = "";
+    _decResult.reset();
 }
 
 void PcmAudioPlayer::onWakeup()
@@ -102,6 +113,12 @@ void PcmAudioPlayer::onWakeup()
 
 void PcmAudioPlayer::enqueue()
 {
+    if (!_decResult.isValid())
+    {
+        LOGD("_decResult.isValid: false");
+        return;
+    }
+
     char* base = _decResult.pcmBuffer->data();
     char* data = base + _currentBufferIndex;
     int remain = _decResult.pcmBuffer->size() - _currentBufferIndex;
@@ -135,28 +152,29 @@ void PcmAudioPlayer::samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq)
             LOGD("PcmAudioPlayer (%p) is waiting ...", this);
             {
                 std::unique_lock<std::mutex> lk(_enqueueMutex);
+                // Should set to initialized state before wait ...
                 setState(State::INITIALIZED);
                 _stateMutex.unlock();
                 _enqueueCond.wait(lk);
                 _stateMutex.lock();
             }
 
-            if (_isDestroyed)
-            {
-                (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
-                (*_bufferQueueItf)->Clear(_bufferQueueItf);
-                LOGD("PcmAudioPlayer (%p) was destroyed!", this);
-                // Reset _isDestroyed to false
-                _isDestroyed = false;
-                _stateMutex.unlock();
-                return;
-            }
-
             onWakeup();
         }
     }
 
-    enqueue();
+    if (_isDestroyed)
+    {
+        (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
+        (*_bufferQueueItf)->Clear(_bufferQueueItf);
+        LOGD("PcmAudioPlayer (%p) was destroyed!", this);
+        // Reset _isDestroyed to false
+        _isDestroyed = false;
+    }
+    else
+    {
+        enqueue();
+    }
     _stateMutex.unlock();
 }
 
@@ -170,7 +188,6 @@ void PcmAudioPlayer::play()
     else
     {
 //        LOGD("PcmAudioPlayer (%p, %d) will play ...", this, getId());
-
         int counter = 0; // try to wait 1.5ms
         while (_state != State::INITIALIZED)
         {
@@ -180,7 +197,7 @@ void PcmAudioPlayer::play()
                 break;
             }
             // If player isn't ready, just wait for 500us
-            LOGD("Sleeping %d ...", counter);
+            LOGD("Waiting player (%p) initialzied, count:%d, state: %d", this, counter, _state);
             usleep(250);
             ++counter;
         }
@@ -237,7 +254,7 @@ void PcmAudioPlayer::resume()
     }
 }
 
-bool PcmAudioPlayer::initForPlayPcmData(int numChannels, int sampleRate, int bufferSizeInBytes)
+bool PcmAudioPlayer::init(int numChannels, int sampleRate, int bufferSizeInBytes)
 {
     _numChannels = numChannels;
     _sampleRate = sampleRate;
@@ -330,7 +347,8 @@ bool PcmAudioPlayer::prepare(const std::string& url, const PcmData &decResult)
     }
     else
     {
-        LOGD("PcmAudioPlayer::prepare %s ...", url.c_str());
+//        std::string pcmInfo = decResult.toString();
+//        LOGD("PcmAudioPlayer::prepare %s, decResult: %s", url.c_str(), pcmInfo.c_str());
         _url = url;
         _decResult = decResult;
         _currentBufferIndex = 0;
@@ -346,25 +364,14 @@ bool PcmAudioPlayer::prepare(const std::string& url, const PcmData &decResult)
         }
 
         setVolume(1.0f);
-        LOGD("PcmAudioPlayer::prepare end ..");
     }
 
     return true;
 }
 
-void PcmAudioPlayer::reset()
-{
-    setId(-1);
-    setLoop(false);
-    _currentBufferIndex = 0;
-    _url = "";
-    _decResult.reset();
-    setState(State::INITIALIZED);
-}
-
 void PcmAudioPlayer::rewind()
 {
-    LOGE("PcmAudioPlayer::rewind wan't implemented!");
+    LOGE("PcmAudioPlayer::rewind wasn't implemented!");
 }
 
 void PcmAudioPlayer::setVolume(float volume)

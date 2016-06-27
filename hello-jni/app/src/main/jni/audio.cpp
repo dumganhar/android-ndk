@@ -38,13 +38,33 @@ static int fdGetter(const std::string& url, off_t* start, off_t* length)
     AAsset_close(asset);
 
     return ret;
-};
+}
+
+
 
 extern "C" {
 
 jboolean loadSample(JNIEnv *, AAssetManager *, jstring);
 void destroyOutputMix(AudioOutputMix *);
 void destroyEngine(AudioEngine *);
+
+JNIEXPORT void JNICALL
+Java_com_example_hellojni_HelloJni_jniOnPause(JNIEnv *env, jobject instance) {
+    if (__audioPlayerProvider != nullptr)
+    {
+        // TODO:
+//        __audioPlayerProvider->pause();
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_hellojni_HelloJni_jniOnResume(JNIEnv *env, jobject instance) {
+    if (__audioPlayerProvider != nullptr)
+    {
+//        TODO:
+//        __audioPlayerProvider->resume();
+    }
+};
 
 JNIEXPORT
 jboolean
@@ -63,7 +83,7 @@ AUDIO_FUNC(jniCreate)(JNIEnv *env, jclass clazz, jint sampleRate, jint bufferSiz
     res = (*engine.engine)->CreateOutputMix(engine.engine, &output.object, 0, NULL, NULL);
     res = (*output.object)->Realize(output.object, SL_BOOLEAN_FALSE);
 
-    __audioPlayerProvider = new AudioPlayerProvider(engine.engine, output.object, sampleRate, bufferSizeInFrames, fdGetter);
+    __audioPlayerProvider = new (std::nothrow) AudioPlayerProvider(engine.engine, output.object, sampleRate, bufferSizeInFrames, fdGetter);
 
     return JNI_TRUE;
 }
@@ -86,11 +106,9 @@ AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobject
     AAssetManager *amgr = AAssetManager_fromJava(env, asset_man);
     __assetManager = amgr;
     int len = env->GetArrayLength(files);
-    // feel free to implement your own sample management layer,
-    // here i simply unload all samples beforehand.
-//FIXME:    unloadSamples();
-    for (int i = 0; i < len; ++i) {
-        LOGD("i:%d, len=%d", i, len);
+
+    for (int i = 0; i < len; ++i)
+    {
         jstring filename = (jstring) env->GetObjectArrayElement(files, i);
         jboolean loaded = loadSample(env, amgr, filename);
         if (!loaded) {
@@ -127,13 +145,11 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
 
 jboolean loadSample(JNIEnv *env, AAssetManager *amgr, jstring filename) {
     const char *utf8 = env->GetStringUTFChars(filename, NULL);
-//    AAsset *asset = AAssetManager_open(amgr, utf8, AASSET_MODE_UNKNOWN);
 
     __audioPlayerProvider->preloadEffect(utf8);
 
     env->ReleaseStringUTFChars(filename, utf8);
 
-//    AAsset_close(asset);
     return JNI_TRUE;
 }
 

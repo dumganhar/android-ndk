@@ -33,6 +33,7 @@ THE SOFTWARE.
 #include <string>
 
 #define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
+#define LOGW(...)  __android_log_print(ANDROID_LOG_WARN, LOG_TAG,__VA_ARGS__)
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
 
 #define SL_SAFE_DELETE(obj) \
@@ -57,5 +58,39 @@ THE SOFTWARE.
     }
 
 typedef std::function<int(const std::string&, off_t* start, off_t* length)> FdGetterCallback;
+
+
+// Copied from OpenSLES_AndroidMetadata.h in android-21
+// It's because android-10 doesn't contain this header file
+/**
+ * Additional metadata keys to be used in SLMetadataExtractionItf:
+ *   the ANDROID_KEY_PCMFORMAT_* keys follow the fields of the SLDataFormat_PCM struct, and as such
+ *   all values corresponding to these keys are of SLuint32 type, and are defined as the fields
+ *   of the same name in SLDataFormat_PCM.  The exception is that sample rate is expressed here
+ *   in Hz units, rather than in milliHz units.
+ */
+#ifndef ANDROID_KEY_PCMFORMAT_NUMCHANNELS
+#define ANDROID_KEY_PCMFORMAT_NUMCHANNELS   "AndroidPcmFormatNumChannels"
+#endif
+
+#ifndef ANDROID_KEY_PCMFORMAT_SAMPLERATE
+#define ANDROID_KEY_PCMFORMAT_SAMPLERATE    "AndroidPcmFormatSampleRate"
+#endif
+
+#ifndef ANDROID_KEY_PCMFORMAT_BITSPERSAMPLE
+#define ANDROID_KEY_PCMFORMAT_BITSPERSAMPLE "AndroidPcmFormatBitsPerSample"
+#endif
+
+#ifndef ANDROID_KEY_PCMFORMAT_CONTAINERSIZE
+#define ANDROID_KEY_PCMFORMAT_CONTAINERSIZE "AndroidPcmFormatContainerSize"
+#endif
+
+#ifndef ANDROID_KEY_PCMFORMAT_CHANNELMASK
+#define ANDROID_KEY_PCMFORMAT_CHANNELMASK   "AndroidPcmFormatChannelMask"
+#endif
+
+#ifndef ANDROID_KEY_PCMFORMAT_ENDIANNESS
+#define ANDROID_KEY_PCMFORMAT_ENDIANNESS    "AndroidPcmFormatEndianness"
+#endif
 
 #endif //COCOS_OPENSLHELPER_H

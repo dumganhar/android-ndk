@@ -398,6 +398,8 @@ bool AudioDecoder::start(const FdGetterCallback& fdGetterCallback)
 
     resample();
 
+    interleave();
+
     return true;
 }
 
@@ -643,4 +645,35 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
     _result.endianness = *((SLuint32*)_pcmMetaData.data);
 
     _formatQueried = true;
+}
+
+void AudioDecoder::interleave()
+{
+    if (_result.numChannels > 1)
+    {
+        return;
+    }
+
+    // If it's a mono audio, try to compose a fake stereo buffer
+    size_t newBufferSize = _result.pcmBuffer->size() * 2;
+    auto newBuffer = std::make_shared<std::vector<char>>();
+    newBuffer->reserve(newBufferSize);
+    size_t totalFrameSizeInBytes = (size_t) (_result.numFrames * _result.bitsPerSample / 8);
+
+    for (size_t i = 0; i < totalFrameSizeInBytes; i+=2)
+    {
+        // get one short value
+        char byte1 = _result.pcmBuffer->at(i);
+        char byte2 = _result.pcmBuffer->at(i+1);
+
+        // push two short value
+        for (int j = 0; j < 2; ++j)
+        {
+            newBuffer->push_back(byte1);
+            newBuffer->push_back(byte2);
+        }
+    }
+    _result.numChannels = 2;
+    _result.channelMask = SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT;
+    _result.pcmBuffer = newBuffer;
 }

@@ -35,33 +35,16 @@ PcmAudioPlayerPool::PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf output
         , _deviceBufferSizeInFrames(deviceBufferSizeInFrames)
 {
     _audioPlayerPool.reserve(AUDIO_PLAYER_POOL_SIZE);
-
-    for (int i = 0; i < AUDIO_PLAYER_POOL_SIZE; ++i)
-    {
-        int numChannels = 1;
-        if (i >= (AUDIO_PLAYER_POOL_SIZE / 2))
-        {
-            numChannels = 2;
-        }
-
-        auto player = createPlayer(numChannels);
-        if (player != nullptr)
-        {
-            LOGD("Insert a PcmAudioPlayer (%p, channels:%d) to pool ...", player, numChannels);
-            _audioPlayerPool.push_back(player);
-        }
-    }
+    prepareEnoughPlayers();
 }
 
 PcmAudioPlayerPool::~PcmAudioPlayerPool()
 {
     LOGD("PcmAudioPlayerPool::destroy begin ...");
-    int i = 0;
     for (const auto& player : _audioPlayerPool)
     {
-        LOGD("delete PcmAudioPlayer (%d, %p) ...", i, player);
+        LOGD("delete PcmAudioPlayer (%p) ...", player);
         delete player;
-        ++i;
     }
     _audioPlayerPool.clear();
     LOGD("PcmAudioPlayerPool::destroy end ...");
@@ -73,7 +56,7 @@ PcmAudioPlayer *PcmAudioPlayerPool::findAvailablePlayer(int numChannels)
     int i = 0;
     for (auto iter = _audioPlayerPool.begin(); iter != _audioPlayerPool.end(); ++iter)
     {
-        if ((*iter)->getState() != IAudioPlayer::State::PLAYING)
+        if ((*iter)->getState() == IAudioPlayer::State::INITIALIZED)
         {
             if (freeIter == _audioPlayerPool.end())
             {
@@ -82,14 +65,14 @@ PcmAudioPlayer *PcmAudioPlayerPool::findAvailablePlayer(int numChannels)
 
             if ((*iter)->getChannelCount() == numChannels)
             {
-                LOGD("PcmAudioPlayer %d is working ...", i);
+                LOGD("PcmAudioPlayer (%p, idx: %d) is working ...", (*iter), i);
                 return (*iter);
             }
         }
         ++i;
     }
 
-    // Try to delete a free player and create a new one matches the channel count
+    // Try to delete a free player and create a new (std::nothrow) one matches the channel count
     if (freeIter != _audioPlayerPool.end())
     {
         LOGD("Removing a player (%p, channel:%d)", (*freeIter), (*freeIter)->getChannelCount());
@@ -110,16 +93,64 @@ PcmAudioPlayer *PcmAudioPlayerPool::findAvailablePlayer(int numChannels)
 
 PcmAudioPlayer *PcmAudioPlayerPool::createPlayer(int numChannels)
 {
-    PcmAudioPlayer* player = new PcmAudioPlayer(_engineItf, _outputMixObject);
+    PcmAudioPlayer* player = new (std::nothrow) PcmAudioPlayer(_engineItf, _outputMixObject);
     if (player != nullptr)
     {
-        if (!player->initForPlayPcmData(numChannels, _deviceSampleRate, _deviceBufferSizeInFrames * numChannels * 2))
+        if (!player->init(numChannels, _deviceSampleRate,
+                          _deviceBufferSizeInFrames * numChannels * 2))
         {
-            delete player;
-            player = nullptr;
+            SL_SAFE_DELETE(player);
         }
     }
 
     return player;
 }
 
+void PcmAudioPlayerPool::prepareEnoughPlayers()
+{
+    ssize_t toAddPlayerCount = AUDIO_PLAYER_POOL_SIZE - _audioPlayerPool.size();
+    if (toAddPlayerCount <= 0)
+    {
+        return;
+    }
+
+    for (int i = 0; i < toAddPlayerCount; ++i)
+    {
+        auto player = createPlayer(2);
+        if (player != nullptr)
+        {
+            LOGD("Insert a PcmAudioPlayer (%p) to pool ...", player);
+            _audioPlayerPool.push_back(player);
+        }
+        else
+        {
+            LOGW("Could not create more PcmAudioPlayers, current count: %d", i);
+            // should release an extra PcmAudioPlayer for UrlAudioPlayer
+            if (!_audioPlayerPool.empty())
+            {
+                LOGD("Release a seat of PcmAudioPlayer for UrlAudioPlayer");
+                delete _audioPlayerPool.at(0);
+                _audioPlayerPool.erase(_audioPlayerPool.begin());
+            }
+            break;
+        }
+    }
+}
+
+void PcmAudioPlayerPool::releaseUnusedPlayers()
+{
+    LOGD("PcmAudioPlayerPool::releaseUnusedPlayers begin ...");
+    size_t len = _audioPlayerPool.size();
+    PcmAudioPlayer* player = nullptr;
+    for (size_t i = len-1; i >= 0; --i)
+    {
+        player = _audioPlayerPool[i];
+        if (player->getState() == IAudioPlayer::State::INITIALIZED)
+        {
+            LOGD("PcmAudioPlayerPool::releaseUnusedPlayers, delete PcmAudioPlayer (%p, index:%d) ...", player, i);
+            delete player;
+            _audioPlayerPool.erase(_audioPlayerPool.begin() + i);
+        }
+    }
+    LOGD("PcmAudioPlayerPool::releaseUnusedPlayers end ...");
+}

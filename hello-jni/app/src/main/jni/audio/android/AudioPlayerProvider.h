@@ -28,13 +28,13 @@ THE SOFTWARE.
 #include "audio/android/IAudioPlayer.h"
 #include "audio/android/OpenSLHelper.h"
 #include "audio/android/PcmData.h"
-#include "PcmAudioPlayer.h"
-#include "UrlAudioPlayer.h"
 
 #include <unordered_map>
 
 // Manage PcmAudioPlayerPool & UrlAudioPlayer
 
+class PcmAudioPlayer;
+class UrlAudioPlayer;
 class PcmAudioPlayerPool;
 
 class AudioPlayerProvider
@@ -47,6 +47,9 @@ public:
     PcmData preloadEffect(const std::string& audioFilePath);
     void clearPcmCache(const std::string& audioFilePath);
     void clearAllPcmCaches();
+
+    void pause();
+    void resume();
 
 private:
     struct AudioFileInfo
@@ -73,7 +76,7 @@ private:
 
     PcmData preloadEffect(const AudioFileInfo& info);
     AudioFileInfo getFileInfo(const std::string& audioFilePath);
-    bool isSmallFile(long fileSize);
+    bool isSmallFile(const AudioFileInfo& info);
 private:
     SLEngineItf _engineItf;
     SLObjectItf _outputMixObject;
