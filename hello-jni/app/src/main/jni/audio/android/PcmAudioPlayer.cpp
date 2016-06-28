@@ -32,8 +32,6 @@ THE SOFTWARE.
 
 #define AUDIO_PLAYER_BUFFER_COUNT (2)
 
-static std::once_flag __onceFlag;
-
 static std::vector<char> __silenceData;
 
 class SLPcmAudioPlayerCallbackProxy
@@ -60,7 +58,6 @@ PcmAudioPlayer::PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObjec
         , _volume(0.0f)
         , _isLoop(false)
         , _state(State::INVALID)
-        , _isDestroyed(false)
         , _currentBufferIndex(0)
         , _playEventCallback(nullptr)
 {
@@ -68,22 +65,10 @@ PcmAudioPlayer::PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObjec
 
 PcmAudioPlayer::~PcmAudioPlayer()
 {
-    LOGD("~PcmAudioPlayer() (%p)", this);
-    _isDestroyed = true;
-
-    if (_state != State::INVALID)
-    {
-        while (_isDestroyed) {
-            _enqueueCond.notify_one();
-            // wait 1ms to wakeup sub thread
-            usleep(1 * 1000);
-        }
-
-        // Sleep another 1ms to wait sub thread to exit
-        usleep(1 * 1000);
-    }
-    LOGD("~PcmAudioPlayer(), before destroy play object");
+    LOGD("~PcmAudioPlayer() (%p), before destroy play object", this);
+    _stateMutex.lock();
     SL_DESTROY_OBJ(_playObj);
+    _stateMutex.unlock();
     LOGD("~PcmAudioPlayer() end");
 }
 
@@ -105,18 +90,12 @@ void PcmAudioPlayer::onPlayOver()
     _decResult.reset();
 }
 
-void PcmAudioPlayer::onWakeup()
-{
-    LOGD("PcmAudioPlayer %p onWakeup ...", this);
-    setVolume(_volume);
-}
-
-void PcmAudioPlayer::enqueue()
+bool PcmAudioPlayer::enqueue()
 {
     if (!_decResult.isValid())
     {
         LOGD("_decResult.isValid: false");
-        return;
+        return false;
     }
 
     char* base = _decResult.pcmBuffer->data();
@@ -126,9 +105,11 @@ void PcmAudioPlayer::enqueue()
 
 //    LOGD("PcmAudioPlayer (%p, %d) enqueue buffer size: %d, index = %d, totalEnqueueSize: %d", this, getId(), size, _currentBufferIndex, _currentBufferIndex + size);
     SLresult  r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, data, size);
-    SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::enqueue failed");
+    SL_RETURN_VAL_IF_FAILED(r, false, "PcmAudioPlayer::enqueue failed");
 
     _currentBufferIndex += size;
+
+    return true;
 }
 
 void PcmAudioPlayer::samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq)
@@ -137,44 +118,35 @@ void PcmAudioPlayer::samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq)
     // It's in sub thread
     _stateMutex.lock();
 
-    int pcmDataSize = _decResult.pcmBuffer ? _decResult.pcmBuffer->size() : 0;
-
-    if (_state == State::STOPPED || _currentBufferIndex >= pcmDataSize)
+    if (_state == State::PLAYING)
     {
-        if (_isLoop)
+        bool isPlayOver = false;
+        int pcmDataSize = _decResult.pcmBuffer ? _decResult.pcmBuffer->size() : 0;
+        if (_currentBufferIndex >= pcmDataSize)
         {
-            _currentBufferIndex = 0;
-        }
-        else
-        {
-            onPlayOver();
-
-            LOGD("PcmAudioPlayer (%p) is waiting ...", this);
+            if (_isLoop)
             {
-                std::unique_lock<std::mutex> lk(_enqueueMutex);
-                // Should set to initialized state before wait ...
-                setState(State::INITIALIZED);
-                _stateMutex.unlock();
-                _enqueueCond.wait(lk);
-                _stateMutex.lock();
+                _currentBufferIndex = 0;
             }
+            else
+            {
+                onPlayOver();
+                setState(State::INITIALIZED);
+                (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
+                isPlayOver = true;
+            }
+        }
 
-            onWakeup();
+        if (!isPlayOver)
+        {
+            enqueue();
         }
     }
+    else if (_state == State::INVALID)
+    {
+        setState(State::INITIALIZED);
+    }
 
-    if (_isDestroyed)
-    {
-        (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
-        (*_bufferQueueItf)->Clear(_bufferQueueItf);
-        LOGD("PcmAudioPlayer (%p) was destroyed!", this);
-        // Reset _isDestroyed to false
-        _isDestroyed = false;
-    }
-    else
-    {
-        enqueue();
-    }
     _stateMutex.unlock();
 }
 
@@ -208,8 +180,12 @@ void PcmAudioPlayer::play()
         }
         else
         {
-            setState(State::PLAYING);
-            _enqueueCond.notify_one();
+            if (enqueue())
+            {
+                setState(State::PLAYING);
+                SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+                SL_RETURN_IF_FAILED(r, "SetPlayState SL_PLAYSTATE_PLAYING failed");
+            }
         }
     }
 }
@@ -332,7 +308,7 @@ bool PcmAudioPlayer::init(int numChannels, int sampleRate, int bufferSizeInBytes
     r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
     SL_RETURN_VAL_IF_FAILED(r, false, "SetPlayState SL_PLAYSTATE_PLAYING failed");
 
-    setState(State::INITIALIZED);
+    setState(State::INVALID);
 
     return true;
 }

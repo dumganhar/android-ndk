@@ -73,8 +73,7 @@ private:
     bool prepare(const std::string& url, const PcmData& decResult);
 
     void onPlayOver();
-    void onWakeup();
-    void enqueue();
+    bool enqueue();
 
     void samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq);
 
@@ -100,11 +99,8 @@ private:
     float _volume;
     bool _isLoop;
     State _state;
-    bool _isDestroyed;
 
     std::mutex _stateMutex;
-    std::mutex _enqueueMutex;
-    std::condition_variable _enqueueCond;
 
     int _currentBufferIndex;
     PlayEventCallback _playEventCallback;

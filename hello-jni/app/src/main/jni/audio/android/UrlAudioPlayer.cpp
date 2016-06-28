@@ -30,10 +30,11 @@ THE SOFTWARE.
 #include <unistd.h>
 #include <algorithm> // for std::find
 
-std::vector<UrlAudioPlayer*> __stoppedPlayers;
-std::vector<UrlAudioPlayer*> __playOverPlayers;
-std::vector<UrlAudioPlayer*> __allPlayers;
+static std::vector<UrlAudioPlayer*> __stoppedPlayers;
+static std::vector<UrlAudioPlayer*> __playOverPlayers;
+static std::vector<UrlAudioPlayer*> __allPlayers;
 
+static std::mutex __playOverMutex;
 static std::once_flag __onceFlag;
 static int __instanceCount = 0;
 
@@ -103,9 +104,9 @@ void UrlAudioPlayer::playEventCallback(SLPlayItf caller, SLuint32 playEvent)
             {
                 _playEventCallback(State::OVER);
             }
-            _playOverMutex.lock();
+            __playOverMutex.lock();
             __playOverPlayers.push_back(this);
-            _playOverMutex.unlock();
+            __playOverMutex.unlock();
         }
     }
 }
@@ -318,6 +319,7 @@ bool UrlAudioPlayer::isLoop() const
 
 void UrlAudioPlayer::update()
 {
+    __playOverMutex.lock();
     if (!__playOverPlayers.empty())
     {
         LOGD("UrlAudioPlayer::update, clear playOver players!");
@@ -328,6 +330,7 @@ void UrlAudioPlayer::update()
         }
         __playOverPlayers.clear();
     }
+    __playOverMutex.unlock();
 
     if (!__stoppedPlayers.empty())
     {

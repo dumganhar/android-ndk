@@ -45,6 +45,22 @@ public class HelloJni extends Activity
     private static final int MY_PERMISSIONS_REQUEST_WRITE_EXTERNAL = 200;
     private Handler mHandler = null;
     private int mAutoPlayCount = 0;
+    private final int DELAY_TIME = 250;
+
+    private Runnable mRunnable = new Runnable() {
+        @Override
+        public void run() {
+
+            playEffect();
+            mAutoPlayCount++;
+//                if (mAutoPlayCount > 100)
+//                {
+//                    return;
+//                }
+
+            mHandler.postDelayed(this, DELAY_TIME);
+        }
+    };
 
     /** Called when the activity is first created. */
     @Override
@@ -156,23 +172,8 @@ public class HelloJni extends Activity
 
         layout.addView(stopAllBtn);
 
-        final int delayTime = 64;
         mHandler = new Handler();
-        final Runnable runnable = new Runnable() {
-            @Override
-            public void run() {
-
-                playEffect();
-                mAutoPlayCount++;
-                if (mAutoPlayCount > 100)
-                {
-                    return;
-                }
-
-                mHandler.postDelayed(this, delayTime);
-            }
-        };
-        mHandler.postDelayed(runnable, delayTime);
+        mHandler.postDelayed(mRunnable, DELAY_TIME);
     }
 
     private Button createButton(String text, View.OnClickListener listener) {
@@ -367,6 +368,7 @@ public class HelloJni extends Activity
     protected void onPause() {
         Log.d(TAG, "onPause ...");
         super.onPause();
+        mHandler.removeCallbacksAndMessages(null);
         jniOnPause();
     }
 
@@ -374,6 +376,7 @@ public class HelloJni extends Activity
     protected void onResume() {
         Log.d(TAG, "onResume ...");
         super.onResume();
+        mHandler.postDelayed(mRunnable, DELAY_TIME);
         jniOnResume();
     }
 }

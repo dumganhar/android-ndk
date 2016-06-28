@@ -96,7 +96,6 @@ private:
     PlayEventCallback _playEventCallback;
 
     std::mutex _stateMutex;
-    std::mutex _playOverMutex;
 
     friend class SLUrlAudioPlayerCallbackProxy;
     friend class AudioPlayerProvider;
