@@ -44,6 +44,7 @@ public class HelloJni extends Activity
     private static final String TAG = "cjh";
     private static final int MY_PERMISSIONS_REQUEST_WRITE_EXTERNAL = 200;
     private Handler mHandler = null;
+    private int mAutoPlayCount = 0;
 
     /** Called when the activity is first created. */
     @Override
@@ -137,34 +138,56 @@ public class HelloJni extends Activity
         layout.setOrientation(LinearLayout.VERTICAL);
         setContentView(layout);
 
-        Button button = new Button(this);
-
-        button.setOnClickListener(new View.OnClickListener() {
+        Button playBtn = createButton("Play", new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 playEffect();
             }
         });
 
-        ViewGroup.LayoutParams btnParams = new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
+        layout.addView(playBtn);
 
-        button.setText("Play");
-        button.setLayoutParams(btnParams);
-        layout.addView(button);
+        Button stopAllBtn = createButton("StopAll", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mHandler.removeCallbacksAndMessages(null);
+            }
+        });
+
+        layout.addView(stopAllBtn);
 
         final int delayTime = 64;
         mHandler = new Handler();
         final Runnable runnable = new Runnable() {
             @Override
             public void run() {
+
+                playEffect();
+                mAutoPlayCount++;
+                if (mAutoPlayCount > 100)
+                {
+                    return;
+                }
+
                 mHandler.postDelayed(this, delayTime);
-//                playEffect();
             }
         };
         mHandler.postDelayed(runnable, delayTime);
+    }
+
+    private Button createButton(String text, View.OnClickListener listener) {
+        Button button = new Button(this);
+
+        button.setOnClickListener(listener);
+
+        ViewGroup.LayoutParams btnParams = new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+
+        button.setText(text);
+        button.setLayoutParams(btnParams);
+        return button;
     }
 
     private void playEffect() {
