@@ -105,6 +105,9 @@ private:
     int _currentBufferIndex;
     PlayEventCallback _playEventCallback;
 
+    struct timeval _startTime;
+    bool _isFirstTime;
+
     friend class SLPcmAudioPlayerCallbackProxy;
     friend class PcmAudioPlayerPool;
     friend class AudioPlayerProvider;

@@ -40,6 +40,7 @@ struct PcmData
     int channelMask;
     int endianness;
     int numFrames;
+    float duration; // in seconds
 
     PcmData();
     ~PcmData();

@@ -49,6 +49,7 @@ PcmData::PcmData(const PcmData& o)
     channelMask = o.channelMask;
     endianness = o.endianness;
     numFrames = o.numFrames;
+    duration = o.duration;
     pcmBuffer = std::move(o.pcmBuffer);
 }
 
@@ -62,6 +63,7 @@ PcmData::PcmData(PcmData&& o)
     channelMask = o.channelMask;
     endianness = o.endianness;
     numFrames = o.numFrames;
+    duration = o.duration;
     pcmBuffer = std::move(o.pcmBuffer);
     o.reset();
 }
@@ -76,6 +78,7 @@ PcmData& PcmData::operator= (const PcmData& o)
     channelMask = o.channelMask;
     endianness = o.endianness;
     numFrames = o.numFrames;
+    duration = o.duration;
     pcmBuffer = o.pcmBuffer;
     return *this;
 }
@@ -90,6 +93,7 @@ PcmData& PcmData::operator= (PcmData&& o)
     channelMask = o.channelMask;
     endianness = o.endianness;
     numFrames = o.numFrames;
+    duration = o.duration;
     pcmBuffer = o.pcmBuffer;
     o.reset();
     return *this;
@@ -104,12 +108,14 @@ void PcmData::reset()
     channelMask = -1;
     endianness = -1;
     numFrames = -1;
+    duration = -1.0f;
     pcmBuffer = nullptr;
 }
 
 bool PcmData::isValid() const
 {
-    return numChannels > 0 && sampleRate > 0 && bitsPerSample > 0 && containerSize > 0 && numFrames > 0 && pcmBuffer != nullptr;
+    return numChannels > 0 && sampleRate > 0 && bitsPerSample > 0 && containerSize > 0
+           && numFrames > 0 && duration > 0 && pcmBuffer != nullptr;
 }
 
 std::string PcmData::toString() const
@@ -118,8 +124,9 @@ std::string PcmData::toString() const
     char buf[256] = {0};
 
     snprintf(buf, sizeof(buf),
-             "numChannels: %d, sampleRate: %d, bitPerSample: %d, containerSize: %d, channelMask: %d, endianness: %d, numFrames: %d",
-             numChannels, sampleRate, bitsPerSample, containerSize, channelMask, endianness, numFrames
+             "numChannels: %d, sampleRate: %d, bitPerSample: %d, containerSize: %d, "
+                     "channelMask: %d, endianness: %d, numFrames: %d, duration: %f",
+             numChannels, sampleRate, bitsPerSample, containerSize, channelMask, endianness, numFrames, duration
     );
 
     ret = buf;

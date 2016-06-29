@@ -173,7 +173,7 @@ public class HelloJni extends Activity
         layout.addView(stopAllBtn);
 
         mHandler = new Handler();
-        mHandler.postDelayed(mRunnable, DELAY_TIME);
+//        mHandler.postDelayed(mRunnable, DELAY_TIME);
     }
 
     private Button createButton(String text, View.OnClickListener listener) {
@@ -376,7 +376,7 @@ public class HelloJni extends Activity
     protected void onResume() {
         Log.d(TAG, "onResume ...");
         super.onResume();
-        mHandler.postDelayed(mRunnable, DELAY_TIME);
+//        mHandler.postDelayed(mRunnable, DELAY_TIME);
         jniOnResume();
     }
 }

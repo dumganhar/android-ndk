@@ -128,8 +128,11 @@ bool AudioDecoder::start(const FdGetterCallback& fdGetterCallback)
 
     /* Source of audio data for the decoding */
     SLDataSource      decSource;
+
+    // decUri & locFd should be defined here
     SLDataLocator_URI decUri;
-    
+    SLDataLocator_AndroidFD locFd;
+
     /* Data sink for decoded audio */
     SLDataSink                decDest;
     SLDataLocator_AndroidSimpleBufferQueue decBuffQueue;
@@ -163,7 +166,6 @@ bool AudioDecoder::start(const FdGetterCallback& fdGetterCallback)
     decSource.pFormat = &formatMime;
 
     if (_url[0] != '/') {
-        SLDataLocator_AndroidFD locFd;
         off_t start = 0, length = 0;
         std::string relativePath;
         size_t position = _url.find("assets/");
@@ -582,20 +584,6 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
 #endif
 
 #if 0
-    /* Example: display duration in callback where we use the callback context for the SLPlayItf*/
-    SLmillisecond durationInMsec = SL_TIME_UNKNOWN;
-    result = (*_decContext.playItf)->GetDuration(_decContext.playItf, &durationInMsec);
-    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback,GetDuration failed");
-
-    if (durationInMsec == SL_TIME_UNKNOWN) {
-        LOGD("Content duration is unknown (in dec callback)\n");
-    } else {
-        LOGD("Content duration is %ums (in dec callback)\n",
-                durationInMsec);
-    }
-#endif
-
-#if 0
     /* Example: display position in callback where we use the callback context for the SLPlayItf*/
     SLmillisecond posMsec = SL_TIME_UNKNOWN;
     result = (*_decContext.playItf)->GetPosition(_decContext.playItf, &posMsec);
@@ -613,35 +601,48 @@ void AudioDecoder::decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf)
     if (_formatQueried) {
         return;
     }
-    SLresult res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _sampleRateKeyIndex,
+
+    /* Get duration in callback where we use the callback context for the SLPlayItf*/
+    SLmillisecond durationInMsec = SL_TIME_UNKNOWN;
+    result = (*_decContext.playItf)->GetDuration(_decContext.playItf, &durationInMsec);
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback,GetDuration failed");
+
+    if (durationInMsec == SL_TIME_UNKNOWN) {
+        LOGD("Content duration is unknown (in dec callback)");
+    } else {
+        LOGD("Content duration is %ums (in dec callback)", durationInMsec);
+        _result.duration = durationInMsec / 1000.0f;
+    }
+
+    result = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _sampleRateKeyIndex,
                                                 PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
 
-    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _sampleRateKeyIndex failed")
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback.GetValue _sampleRateKeyIndex failed")
     // Note: here we could verify the following:
     //         pcmMetaData->encoding == SL_CHARACTERENCODING_BINARY
     //         pcmMetaData->size == sizeof(SLuint32)
     //       but the call was successful for the PCM format keys, so those conditions are implied
 
     _result.sampleRate = *((SLuint32*)_pcmMetaData.data);
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _numChannelsKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
-    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _numChannelsKeyIndex failed")
+    result = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _numChannelsKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback.GetValue _numChannelsKeyIndex failed")
 
     _result.numChannels = *((SLuint32*)_pcmMetaData.data);
 
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _bitsPerSampleKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
-    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _bitsPerSampleKeyIndex failed")
+    result = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _bitsPerSampleKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback.GetValue _bitsPerSampleKeyIndex failed")
     _result.bitsPerSample = *((SLuint32*)_pcmMetaData.data);
 
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _containerSizeKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
-    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _containerSizeKeyIndex failed")
+    result = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _containerSizeKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback.GetValue _containerSizeKeyIndex failed")
     _result.containerSize = *((SLuint32*)_pcmMetaData.data);
 
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _channelMaskKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
-    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _channelMaskKeyIndex failed")
+    result = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _channelMaskKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback.GetValue _channelMaskKeyIndex failed")
     _result.channelMask = *((SLuint32*)_pcmMetaData.data);
 
-    res = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _endiannessKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
-    SL_RETURN_IF_FAILED(res, "decodeToPcmCallback.GetValue _endiannessKeyIndex failed")
+    result = (*_decContext.metaItf)->GetValue(_decContext.metaItf, _endiannessKeyIndex, PCM_METADATA_VALUE_SIZE, &_pcmMetaData);
+    SL_RETURN_IF_FAILED(result, "decodeToPcmCallback.GetValue _endiannessKeyIndex failed")
     _result.endianness = *((SLuint32*)_pcmMetaData.data);
 
     _formatQueried = true;
