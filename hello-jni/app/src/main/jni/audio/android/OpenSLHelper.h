@@ -57,6 +57,11 @@ THE SOFTWARE.
         return; \
     }
 
+#define SL_PRINT_ERROR_IF_FAILED(r, ...) \
+    if (r != SL_RESULT_SUCCESS) {\
+        LOGE(__VA_ARGS__); \
+    }
+
 typedef std::function<int(const std::string&, off_t* start, off_t* length)> FdGetterCallback;
 
 

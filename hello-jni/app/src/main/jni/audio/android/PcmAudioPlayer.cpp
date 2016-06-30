@@ -28,11 +28,12 @@ THE SOFTWARE.
 
 #include <math.h>
 #include <unistd.h>
-#include <algorithm> // for std::find
-#include <chrono>
 #include <thread>
 
 #define AUDIO_PLAYER_BUFFER_COUNT (2)
+
+#define clockNow() std::chrono::high_resolution_clock::now()
+#define intervalInMS(oldTime, newTime) (static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>((newTime) - (oldTime)).count()) / 1000.f)
 
 static std::vector<char> __silenceData;
 
@@ -42,7 +43,7 @@ public:
     static void samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq, void *context)
     {
         PcmAudioPlayer* thiz = reinterpret_cast<PcmAudioPlayer*>(context);
-        thiz->samplePlayerCallback(bq);
+        thiz->bqFetchBufferCallback(bq);
     }
 };
 
@@ -62,10 +63,8 @@ PcmAudioPlayer::PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObjec
         , _state(State::INVALID)
         , _currentBufferIndex(0)
         , _playEventCallback(nullptr)
-        , _isFirstTime(false)
+        , _isFirstTimeInBqCallback(true)
 {
-    _startTime.tv_sec = 0;
-    _startTime.tv_usec = 0;
 }
 
 PcmAudioPlayer::~PcmAudioPlayer()
@@ -109,22 +108,7 @@ bool PcmAudioPlayer::enqueue()
     int size = std::min(remain, _bufferSizeInBytes);
 
 //    LOGD("PcmAudioPlayer (%p, %d) enqueue buffer size: %d, index = %d, totalEnqueueSize: %d", this, getId(), size, _currentBufferIndex, _currentBufferIndex + size);
-    std::chrono::high_resolution_clock::time_point oldTime;
-    std::chrono::high_resolution_clock::time_point newTime;
-    std::chrono::high_resolution_clock::time_point oldestTime;
-    long duration = 0;
-    oldestTime = oldTime = std::chrono::high_resolution_clock::now();
-
     SLresult  r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, data, size);
-
-    newTime = std::chrono::high_resolution_clock::now();
-    duration = static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(newTime - oldTime).count());
-    oldTime = newTime;
-
-    if (_currentBufferIndex == 0) {
-        LOGD("enqueue wastes %f ms", duration / 1000.0f);
-    }
-
     SL_RETURN_VAL_IF_FAILED(r, false, "PcmAudioPlayer::enqueue failed");
 
     _currentBufferIndex += size;
@@ -132,59 +116,58 @@ bool PcmAudioPlayer::enqueue()
     return true;
 }
 
-void PcmAudioPlayer::samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq)
+void PcmAudioPlayer::bqFetchBufferCallback(SLAndroidSimpleBufferQueueItf bq)
 {
     // FIXME: PcmAudioPlayer instance may be destroyed, we need to find a way to wait...
     // It's in sub thread
     std::lock_guard<std::mutex> lk(_stateMutex);
 
     if (_state == State::PLAYING) {
-//        if (_isFirstTime)
+
+        if (_isFirstTimeInBqCallback)
         {
-//            _isFirstTime = false;
-            struct timeval now;
-            gettimeofday(&now, nullptr);
-            LOGD("buffer interval: %fms", ((now.tv_sec * 1000000 + now.tv_usec) -
-                                           (_startTime.tv_sec * 1000000 + _startTime.tv_usec)) /
-                                          1000.0f);
-            _startTime = now;
+            _isFirstTimeInBqCallback = false;
+            auto nowTime = clockNow();
+            LOGD("PcmAudioPlayer play first buffer wastes: %fms", intervalInMS(_playStartTime, nowTime));
         }
+
         bool isPlayOver = false;
         bool needSetPlayingState = false;
         int pcmDataSize = _decResult.pcmBuffer ? _decResult.pcmBuffer->size() : 0;
-        if (_currentBufferIndex >= pcmDataSize) {
-//            (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
-            if (_isLoop) {
+        SLresult r;
+        if (_currentBufferIndex >= pcmDataSize)
+        {
+            r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
+            SL_PRINT_ERROR_IF_FAILED(r, "bqFetchBufferCallback, SL_PLAYSTATE_STOPPED failed");
+            if (_isLoop)
+            {
                 _currentBufferIndex = 0;
                 needSetPlayingState = true;
             }
-            else {
+            else
+            {
                 onPlayOver();
                 isPlayOver = true;
             }
         }
 
-        if (isPlayOver) {
+        if (isPlayOver)
+        {
             setState(State::INITIALIZED);
         }
-        else {
+        else
+        {
             enqueue();
-//            if (needSetPlayingState)
-//            {
-//                (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
-//            }
+            if (needSetPlayingState)
+            {
+                r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+                SL_PRINT_ERROR_IF_FAILED(r, "bqFetchBufferCallback, SL_PLAYSTATE_PLAYING failed");
+            }
         }
     }
     else if (_state == State::INVALID)
     {
         setState(State::INITIALIZED);
-//        SLresult r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, __silenceData.data(), _bufferSizeInBytes);
-//        SL_RETURN_IF_FAILED(r, "_bufferQueueItf Enqueue failed");
-    }
-    else if (_state == State::INITIALIZED)
-    {
-//        SLresult r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, __silenceData.data(), _bufferSizeInBytes);
-//        SL_RETURN_IF_FAILED(r, "_bufferQueueItf Enqueue failed");
     }
 }
 
@@ -218,36 +201,24 @@ void PcmAudioPlayer::play()
         }
         else
         {
-            std::chrono::high_resolution_clock::time_point oldTime;
-            std::chrono::high_resolution_clock::time_point newTime;
-            std::chrono::high_resolution_clock::time_point oldestTime;
-            long duration = 0;
+            auto oldestTime = clockNow();
+            auto oldTime = oldestTime;
+            auto newTime = oldestTime;
 
-            oldestTime = oldTime = std::chrono::high_resolution_clock::now();
+            setState(State::PLAYING);
 
             enqueue();
-//            newTime = std::chrono::high_resolution_clock::now();
-//            duration = static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(newTime - oldTime).count());
-//            oldTime = newTime;
-//            LOGD("enqueue wastes %f ms", duration / 1000.0f);
-//
-            setState(State::PLAYING);
-//
-//            for (int i = 0; i < 10; ++i) {
-//                SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
-//                SL_RETURN_IF_FAILED(r, "SetPlayState SL_PLAYSTATE_PLAYING failed");
-//
-//                newTime = std::chrono::high_resolution_clock::now();
-//                duration = static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(
-//                        newTime - oldTime).count());
-//                oldTime = newTime;
-//                LOGD("SetPlayState %d, wastes %f ms", i, duration / 1000.0f);
-//            }
-            newTime = std::chrono::high_resolution_clock::now();
-            duration = static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(newTime - oldestTime).count());
+
+            newTime = clockNow();
+            LOGD("PcmAudioPlayer::play, enqueue wastes: %fms", intervalInMS(oldTime, newTime));
             oldTime = newTime;
 
-            LOGD("play wastes %f ms", duration / 1000.0f);
+            SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+            SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::play SetPlayState SL_PLAYSTATE_PLAYING failed");
+
+            newTime = clockNow();
+            LOGD("PcmAudioPlayer::play, SetPlayState wastes: %fms", intervalInMS(oldTime, newTime));
+            LOGD("PcmAudioPlayer::play, wastes: %fms", intervalInMS(oldestTime, newTime));
         }
     }
 }
@@ -266,10 +237,10 @@ void PcmAudioPlayer::stop()
             _playEventCallback(_state);
         }
 
-//        SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
-//        SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::stop, SetPlayState SL_PLAYSTATE_STOPPED failed");
-//        r = (*_bufferQueueItf)->Clear(_bufferQueueItf);
-//        SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::stop, Clear Buffer Queue failed");
+        SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
+        SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::stop, SetPlayState SL_PLAYSTATE_STOPPED failed");
+        r = (*_bufferQueueItf)->Clear(_bufferQueueItf);
+        SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::stop, Clear Buffer Queue failed");
         setState(State::INITIALIZED);
     }
 }
@@ -391,10 +362,12 @@ bool PcmAudioPlayer::prepare(const std::string& url, const PcmData &decResult)
     }
     else
     {
-        _isFirstTime = true;
-        gettimeofday(&_startTime, nullptr);
 //        std::string pcmInfo = decResult.toString();
 //        LOGD("PcmAudioPlayer::prepare %s, decResult: %s", url.c_str(), pcmInfo.c_str());
+
+        _isFirstTimeInBqCallback = true;
+        _playStartTime = clockNow();
+
         _url = url;
         _decResult = decResult;
         _currentBufferIndex = 0;

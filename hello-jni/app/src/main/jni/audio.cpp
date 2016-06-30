@@ -114,6 +114,7 @@ AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobject
             return JNI_FALSE;
         }
     }
+
     return JNI_TRUE;
 }
 

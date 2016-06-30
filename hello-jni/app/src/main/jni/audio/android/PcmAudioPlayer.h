@@ -31,6 +31,7 @@ THE SOFTWARE.
 
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
 
 class PcmAudioPlayer : public IAudioPlayer
 {
@@ -75,7 +76,7 @@ private:
     void onPlayOver();
     bool enqueue();
 
-    void samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq);
+    void bqFetchBufferCallback(SLAndroidSimpleBufferQueueItf bq);
 
     void setState(State state);
 
@@ -105,8 +106,8 @@ private:
     int _currentBufferIndex;
     PlayEventCallback _playEventCallback;
 
-    struct timeval _startTime;
-    bool _isFirstTime;
+    std::chrono::high_resolution_clock::time_point _playStartTime;
+    bool _isFirstTimeInBqCallback;
 
     friend class SLPcmAudioPlayerCallbackProxy;
     friend class PcmAudioPlayerPool;
