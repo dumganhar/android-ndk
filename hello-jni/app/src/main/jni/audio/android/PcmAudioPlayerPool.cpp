@@ -23,8 +23,10 @@ THE SOFTWARE.
 ****************************************************************************/
 #define LOG_TAG "PcmAudioPlayerPool"
 
+#include <assert.h>
 #include "audio/android/PcmAudioPlayerPool.h"
 #include "audio/android/PcmAudioPlayer.h"
+#include "audio/android/CCThreadPool.h"
 
 #define AUDIO_PLAYER_POOL_SIZE (20)
 
@@ -35,12 +37,14 @@ PcmAudioPlayerPool::PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf output
         , _deviceBufferSizeInFrames(deviceBufferSizeInFrames)
 {
     _audioPlayerPool.reserve(AUDIO_PLAYER_POOL_SIZE);
+    _threadPool = ThreadPool::newCachedThreadPool(4, 10, 10, 2, 2);
     prepareEnoughPlayers();
 }
 
 PcmAudioPlayerPool::~PcmAudioPlayerPool()
 {
     LOGD("PcmAudioPlayerPool::destroy begin ...");
+    delete _threadPool;
     for (const auto& player : _audioPlayerPool)
     {
         LOGD("~PcmAudioPlayerPool(): delete PcmAudioPlayer (%p) ...", player);
@@ -52,48 +56,24 @@ PcmAudioPlayerPool::~PcmAudioPlayerPool()
 
 PcmAudioPlayer *PcmAudioPlayerPool::findAvailablePlayer(int numChannels)
 {
-    std::vector<PcmAudioPlayer*>::iterator freeIter = _audioPlayerPool.end();
-    int i = 0;
-    for (auto iter = _audioPlayerPool.begin(); iter != _audioPlayerPool.end(); ++iter)
-    {
-        if ((*iter)->getState() == IAudioPlayer::State::INITIALIZED)
-        {
-            if (freeIter == _audioPlayerPool.end())
-            {
-                freeIter = iter;
-            }
+    assert(numChannels == 2);
 
-            if ((*iter)->getChannelCount() == numChannels)
-            {
-                LOGD("PcmAudioPlayer (%p, idx: %d) is working ...", (*iter), i);
-                return (*iter);
-            }
-        }
-        ++i;
-    }
-
-    // Try to delete a free player and create a new (std::nothrow) one matches the channel count
-    if (freeIter != _audioPlayerPool.end())
+    for (const auto& player : _audioPlayerPool)
     {
-        LOGD("Removing a player (%p, channel:%d)", (*freeIter), (*freeIter)->getChannelCount());
-        delete (*freeIter);
-        _audioPlayerPool.erase(freeIter);
-        auto player = createPlayer(numChannels);
-        if (player != nullptr)
+        if (player->getState() == IAudioPlayer::State::INITIALIZED)
         {
-            LOGD("Insert a PcmAudioPlayer (%p, channels:%d) to pool ...", player, numChannels);
-            _audioPlayerPool.push_back(player);
+            LOGD("PcmAudioPlayer (%p) is working ...", player);
             return player;
         }
     }
 
-    LOGE("Could not find available audio player with %d channels!", numChannels);
+    LOGE("Could not find available audio player");
     return nullptr;
 }
 
 PcmAudioPlayer *PcmAudioPlayerPool::createPlayer(int numChannels)
 {
-    PcmAudioPlayer* player = new (std::nothrow) PcmAudioPlayer(_engineItf, _outputMixObject);
+    PcmAudioPlayer* player = new (std::nothrow) PcmAudioPlayer(_engineItf, _outputMixObject, _threadPool);
     if (player != nullptr)
     {
         if (!player->init(numChannels, _deviceSampleRate,

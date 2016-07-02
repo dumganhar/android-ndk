@@ -28,10 +28,13 @@ THE SOFTWARE.
 #include "audio/android/IAudioPlayer.h"
 #include "audio/android/OpenSLHelper.h"
 #include "audio/android/PcmData.h"
+#include "audio/android/CCThreadPool.h"
 
 #include <mutex>
 #include <condition_variable>
 #include <chrono>
+
+class ThreadPool;
 
 class PcmAudioPlayer : public IAudioPlayer
 {
@@ -66,7 +69,7 @@ public:
     inline int getSampleRate() const { return _sampleRate; };
 
 private:
-    PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
+    PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject, ThreadPool* threadPool);
     virtual ~PcmAudioPlayer();
 
     bool init(int numChannels, int sampleRate, int bufferSizeInBytes);
@@ -108,6 +111,8 @@ private:
 
     std::chrono::high_resolution_clock::time_point _playStartTime;
     bool _isFirstTimeInBqCallback;
+
+    ThreadPool* _threadPool;
 
     friend class SLPcmAudioPlayerCallbackProxy;
     friend class PcmAudioPlayerPool;

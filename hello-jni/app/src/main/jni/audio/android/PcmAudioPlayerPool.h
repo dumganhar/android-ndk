@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <vector>
 
 class PcmAudioPlayer;
+class ThreadPool;
 
 class PcmAudioPlayerPool
 {
@@ -49,6 +50,7 @@ private:
     int _deviceSampleRate;
     int _deviceBufferSizeInFrames;
     std::vector<PcmAudioPlayer*> _audioPlayerPool;
+    ThreadPool* _threadPool;
 };
 
 

@@ -25,6 +25,7 @@ THE SOFTWARE.
 #define LOG_TAG "PcmAudioPlayer"
 
 #include "audio/android/PcmAudioPlayer.h"
+#include "audio/android/CCThreadPool.h"
 
 #include <math.h>
 #include <unistd.h>
@@ -34,8 +35,6 @@ THE SOFTWARE.
 
 #define clockNow() std::chrono::high_resolution_clock::now()
 #define intervalInMS(oldTime, newTime) (static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>((newTime) - (oldTime)).count()) / 1000.f)
-
-static std::vector<char> __silenceData;
 
 class SLPcmAudioPlayerCallbackProxy
 {
@@ -47,7 +46,7 @@ public:
     }
 };
 
-PcmAudioPlayer::PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject)
+PcmAudioPlayer::PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject, ThreadPool* threadPool)
         : _engineItf(engineItf)
         , _outputMixObj(outputMixObject)
         , _id(-1)
@@ -64,6 +63,7 @@ PcmAudioPlayer::PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObjec
         , _currentBufferIndex(0)
         , _playEventCallback(nullptr)
         , _isFirstTimeInBqCallback(true)
+        , _threadPool(threadPool)
 {
 }
 
@@ -122,8 +122,8 @@ void PcmAudioPlayer::bqFetchBufferCallback(SLAndroidSimpleBufferQueueItf bq)
     // It's in sub thread
     std::lock_guard<std::mutex> lk(_stateMutex);
 
-    if (_state == State::PLAYING) {
-
+    if (_state == State::PLAYING)
+    {
         if (_isFirstTimeInBqCallback)
         {
             _isFirstTimeInBqCallback = false;
@@ -181,45 +181,30 @@ void PcmAudioPlayer::play()
     else
     {
 //        LOGD("PcmAudioPlayer (%p, %d) will play ...", this, getId());
-        int counter = 0; // try to wait 1.5ms
-        while (_state != State::INITIALIZED)
-        {
-            if (counter >= 6)
-            {
-                counter = -1;
-                break;
-            }
-            // If player isn't ready, just wait for 500us
-            LOGD("Waiting player (%p) initialized, count:%d, state: %d", this, counter, _state);
-            usleep(250);
-            ++counter;
-        }
+        auto oldestTime = clockNow();
+        auto oldTime = oldestTime;
 
-        if (counter == -1)
-        {
-            LOGW("Player isn't ready, ignore this play!");
-        }
-        else
-        {
-            auto oldestTime = clockNow();
-            auto oldTime = oldestTime;
-            auto newTime = oldestTime;
+        setState(State::PLAYING);
 
-            setState(State::PLAYING);
-
+        _threadPool->pushTask([this, oldTime](int tid){
+            // enqueue buffer or SetPlayState to PLAYING may cause lots of time (5ms - 10ms) sometimes.
+            // Here just put these two operations to thread pool to avoid blocking cocos thread
+            // After this change, the time of first buffer finished doesn't decrease.
             enqueue();
 
-            newTime = clockNow();
-            LOGD("PcmAudioPlayer::play, enqueue wastes: %fms", intervalInMS(oldTime, newTime));
-            oldTime = newTime;
+            auto curTime = clockNow();
+            LOGD("PcmAudioPlayer::play, enqueue wastes: %fms", intervalInMS(oldTime, curTime));
+            auto lastTime = curTime;
 
             SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
             SL_RETURN_IF_FAILED(r, "PcmAudioPlayer::play SetPlayState SL_PLAYSTATE_PLAYING failed");
 
-            newTime = clockNow();
-            LOGD("PcmAudioPlayer::play, SetPlayState wastes: %fms", intervalInMS(oldTime, newTime));
-            LOGD("PcmAudioPlayer::play, wastes: %fms", intervalInMS(oldestTime, newTime));
-        }
+            curTime = clockNow();
+            LOGD("PcmAudioPlayer::play, SetPlayState wastes: %fms", intervalInMS(lastTime, curTime));
+        });
+
+        auto newTime = clockNow();
+        LOGD("PcmAudioPlayer::play, wastes: %fms", intervalInMS(oldestTime, newTime));
     }
 }
 
@@ -274,11 +259,6 @@ bool PcmAudioPlayer::init(int numChannels, int sampleRate, int bufferSizeInBytes
     _numChannels = numChannels;
     _sampleRate = sampleRate;
     _bufferSizeInBytes = bufferSizeInBytes;
-
-    if (__silenceData.empty())
-    {
-        __silenceData.resize(_bufferSizeInBytes * AUDIO_PLAYER_BUFFER_COUNT, 0);
-    }
 
     SLuint32 channelMask = SL_SPEAKER_FRONT_CENTER;
 
@@ -341,13 +321,7 @@ bool PcmAudioPlayer::init(int numChannels, int sampleRate, int bufferSizeInBytes
     r = (*_bufferQueueItf)->RegisterCallback(_bufferQueueItf, SLPcmAudioPlayerCallbackProxy::samplePlayerCallback, this);
     SL_RETURN_VAL_IF_FAILED(r, false, "_bufferQueueItf RegisterCallback failed");
 
-    r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, __silenceData.data(), _bufferSizeInBytes);
-    SL_RETURN_VAL_IF_FAILED(r, false, "_bufferQueueItf Enqueue failed");
-
-    r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
-    SL_RETURN_VAL_IF_FAILED(r, false, "SetPlayState SL_PLAYSTATE_PLAYING failed");
-
-    setState(State::INVALID);
+    setState(State::INITIALIZED);
 
     return true;
 }
@@ -426,16 +400,22 @@ float PcmAudioPlayer::getDuration() const
 
 float PcmAudioPlayer::getPosition() const
 {
-    SLmillisecond millisecond;
-    SLresult r = (*_playItf)->GetPosition(_playItf, &millisecond);
-    SL_RETURN_VAL_IF_FAILED(r, 0.0f, "PcmAudioPlayer::getPosition failed");
-    LOGD("PcmAudioPlayer::getPosition: %f", millisecond / 1000.0f);
-    return millisecond / 1000.0f;
+    if (_decResult.pcmBuffer != nullptr)
+    {
+        return _decResult.duration * _currentBufferIndex / _decResult.pcmBuffer->size();
+    }
+    return 0.0f;
 }
 
 bool PcmAudioPlayer::setPosition(float pos)
 {
-    LOGE("PcmAudioPlayer::setPosition wan't implemented!");
+    std::lock_guard<std::mutex> lk(_stateMutex);
+    if (_decResult.pcmBuffer != nullptr)
+    {
+        _currentBufferIndex = (int)(pos * _decResult.pcmBuffer->size() / _decResult.duration);
+        LOGD("currentIndex: %d, totalSize: %d", _currentBufferIndex, (int)_decResult.pcmBuffer->size());
+        return true;
+    }
     return false;
 }
 
