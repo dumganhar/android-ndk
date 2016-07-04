@@ -34,7 +34,7 @@
 //
 #include "audio.h"
 //
-#include "audio_utils_primitives.h"
+#include "audio_utils/primitives.h"
 //#include <audio_utils/format.h>
 //#include <common_time/local_clock.h>
 //#include <common_time/cc_helper.h>
@@ -803,7 +803,7 @@ bool AudioMixer::track_t::setPlaybackRate(const AudioPlaybackRate &playbackRate)
 //            isAudioPlaybackRateEqual(playbackRate, mPlaybackRate)) {
 //        return false;
 //    }
-//    mPlaybackRate = playbackRate;
+    mPlaybackRate = playbackRate;
 //    if (mTimestretchBufferProvider == NULL) {
 //        // TODO: Remove MONO_HACK. Resampler sees #channels after the downmixer
 //        // but if none exists, it is the channel count (1 for mono).

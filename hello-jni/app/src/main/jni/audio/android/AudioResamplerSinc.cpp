@@ -28,7 +28,7 @@
 //#include <cutils/properties.h>
 
 //#include <utils/Log.h>
-#include "audio_utils_primitives.h"
+#include "audio_utils/primitives.h"
 
 #include "audio/android/AudioResamplerSinc.h"
 

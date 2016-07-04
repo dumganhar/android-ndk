@@ -69,6 +69,30 @@
 #   define CC_UNLIKELY( exp )  (__builtin_expect( !!(exp), 0 ))
 #endif
 
+
+/* special audio session values
+ * (XXX: should this be living in the audio effects land?)
+ */
+typedef enum {
+    /* session for effects attached to a particular output stream
+     * (value must be less than 0)
+     */
+            AUDIO_SESSION_OUTPUT_STAGE = -1,
+
+    /* session for effects applied to output mix. These effects can
+     * be moved by audio policy manager to another output stream
+     * (value must be 0)
+     */
+            AUDIO_SESSION_OUTPUT_MIX = 0,
+
+    /* application does not specify an explicit session ID to be used,
+     * and requests a new session ID to be allocated
+     * TODO use unique values for AUDIO_SESSION_OUTPUT_MIX and AUDIO_SESSION_ALLOCATE,
+     * after all uses have been updated from 0 to the appropriate symbol, and have been tested.
+     */
+            AUDIO_SESSION_ALLOCATE = 0,
+} audio_session_t;
+
 /* Audio sub formats (see enum audio_format). */
 
 /* PCM sub formats */
@@ -420,6 +444,54 @@ static inline audio_channel_mask_t audio_channel_mask_from_representation_and_bi
         audio_channel_representation_t representation, uint32_t bits)
 {
     return (audio_channel_mask_t) ((representation << AUDIO_CHANNEL_COUNT_MAX) | bits);
+}
+
+/* Derive an output channel mask for position assignment from a channel count.
+ * This is to be used when the content channel mask is unknown. The 1, 2, 4, 5, 6, 7 and 8 channel
+ * cases are mapped to the standard game/home-theater layouts, but note that 4 is mapped to quad,
+ * and not stereo + FC + mono surround. A channel count of 3 is arbitrarily mapped to stereo + FC
+ * for continuity with stereo.
+ * Returns the matching channel mask,
+ * or AUDIO_CHANNEL_NONE if the channel count is zero,
+ * or AUDIO_CHANNEL_INVALID if the channel count exceeds that of the
+ * configurations for which a default output channel mask is defined.
+ */
+static inline audio_channel_mask_t audio_channel_out_mask_from_count(uint32_t channel_count)
+{
+    uint32_t bits;
+    switch (channel_count) {
+        case 0:
+            return AUDIO_CHANNEL_NONE;
+        case 1:
+            bits = AUDIO_CHANNEL_OUT_MONO;
+            break;
+        case 2:
+            bits = AUDIO_CHANNEL_OUT_STEREO;
+            break;
+        case 3:
+            bits = AUDIO_CHANNEL_OUT_STEREO | AUDIO_CHANNEL_OUT_FRONT_CENTER;
+            break;
+        case 4: // 4.0
+            bits = AUDIO_CHANNEL_OUT_QUAD;
+            break;
+        case 5: // 5.0
+            bits = AUDIO_CHANNEL_OUT_QUAD | AUDIO_CHANNEL_OUT_FRONT_CENTER;
+            break;
+        case 6: // 5.1
+            bits = AUDIO_CHANNEL_OUT_5POINT1;
+            break;
+        case 7: // 6.1
+            bits = AUDIO_CHANNEL_OUT_5POINT1 | AUDIO_CHANNEL_OUT_BACK_CENTER;
+            break;
+        case 8:
+            bits = AUDIO_CHANNEL_OUT_7POINT1;
+            break;
+            // FIXME FCC_8
+        default:
+            return AUDIO_CHANNEL_INVALID;
+    }
+    return audio_channel_mask_from_representation_and_bits(
+            AUDIO_CHANNEL_REPRESENTATION_POSITION, bits);
 }
 
 #endif //HELLO_JNI_AUDIO_H_H
