@@ -19,7 +19,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
-//#include <cutils/log.h>
+#include "cutils/log.h"
 
 #include "audio/android/AudioResampler.h"
 #include "audio/android/AudioResamplerCubic.h"
@@ -188,4 +188,4 @@ save_state:
 }
 
 // ----------------------------------------------------------------------------
-} // namespace android
+} // namespace cocos2d

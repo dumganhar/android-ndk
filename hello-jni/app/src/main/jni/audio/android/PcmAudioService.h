@@ -21,37 +21,53 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-#ifndef COCOS_AUDIOPLAYERPOOL_H
-#define COCOS_AUDIOPLAYERPOOL_H
 
+#ifndef COCOS_PCMAUDIOSERVICE_H
+#define COCOS_PCMAUDIOSERVICE_H
+
+#include "audio/android/IAudioPlayer.h"
 #include "audio/android/OpenSLHelper.h"
+#include "audio/android/PcmData.h"
 
-#include <vector>
+#include <mutex>
+#include <condition_variable>
 
-class PcmAudioPlayer;
-class ThreadPool;
+class AudioMixer;
 
-class PcmAudioPlayerPool
+class PcmAudioService
 {
 public:
-    PcmAudioPlayerPool(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int deviceBufferSizeInFrames);
-    virtual ~PcmAudioPlayerPool();
-
-    PcmAudioPlayer* findAvailablePlayer(int numChannels);
-    void prepareEnoughPlayers();
-    void releaseUnusedPlayers();
+    inline int getChannelCount() const { return _numChannels; };
+    inline int getSampleRate() const { return _sampleRate; };
 
 private:
-    PcmAudioPlayer* createPlayer(int numChannels);
+    PcmAudioService(SLEngineItf engineItf, SLObjectItf outputMixObject);
+    virtual ~PcmAudioService();
+
+    bool init(int numChannels, int sampleRate, int bufferSizeInBytes);
+
+    bool enqueue();
+
+    void bqFetchBufferCallback(SLAndroidSimpleBufferQueueItf bq);
 
 private:
     SLEngineItf _engineItf;
-    SLObjectItf _outputMixObject;
-    int _deviceSampleRate;
-    int _deviceBufferSizeInFrames;
-    std::vector<PcmAudioPlayer*> _audioPlayerPool;
-    ThreadPool* _threadPool;
+    SLObjectItf _outputMixObj;
+
+    SLObjectItf _playObj;
+    SLPlayItf _playItf;
+    SLVolumeItf _volumeItf;
+    SLAndroidSimpleBufferQueueItf _bufferQueueItf;
+
+    int _numChannels;
+    int _sampleRate;
+    int _bufferSizeInBytes;
+
+    AudioMixer* _mixer;
+
+    friend class SLPcmAudioPlayerCallbackProxy;
+    friend class AudioPlayerProvider;
 };
 
 
-#endif //COCOS_AUDIOPLAYERPOOL_H
+#endif //COCOS_PCMAUDIOSERVICE_H

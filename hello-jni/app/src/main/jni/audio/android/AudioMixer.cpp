@@ -41,6 +41,7 @@
 
 #include "AudioMixerOps.h"
 #include "AudioMixer.h"
+#include "cutils/log.h"
 
 // The FCC_2 macro refers to the Fixed Channel Count of 2 for the legacy integer mixer.
 #ifndef FCC_2
@@ -2105,4 +2106,4 @@ AudioMixer::process_hook_t AudioMixer::getProcessHook(int processType, uint32_t 
 }
 
 // ----------------------------------------------------------------------------
-} // namespace android
+} // namespace cocos2d

@@ -14,21 +14,15 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_AUDIO_BUFFER_PROVIDER_H
-#define ANDROID_AUDIO_BUFFER_PROVIDER_H
+#ifndef COCOS_AUDIO_BUFFER_PROVIDER_H
+#define COCOS_AUDIO_BUFFER_PROVIDER_H
 
 #include <stddef.h>
 #include <stdint.h>
+#include "utils/Errors.h"
 
 namespace cocos2d {
 // ----------------------------------------------------------------------------
-
-enum status_t
-{
-    OK = 0,
-    NO_ERROR,
-    NOT_ENOUGH_DATA
-};
 
 class AudioBufferProvider
 {
@@ -84,6 +78,6 @@ public:
 };
 
 // ----------------------------------------------------------------------------
-}; // namespace android
+}; // namespace cocos2d
 
-#endif // ANDROID_AUDIO_BUFFER_PROVIDER_H
+#endif // COCOS_AUDIO_BUFFER_PROVIDER_H

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "audio/android/bitops.h"  /* for popcount() */
+#include "cutils/bitops.h"  /* for popcount() */
 #include <audio_utils/primitives.h>
 #include "private/private.h"
 

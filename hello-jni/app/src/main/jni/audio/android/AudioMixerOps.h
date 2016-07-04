@@ -17,7 +17,7 @@
 #ifndef ANDROID_AUDIO_MIXER_OPS_H
 #define ANDROID_AUDIO_MIXER_OPS_H
 
-#include "audio.h"
+#include "cutils/log.h"
 
 namespace cocos2d {
 

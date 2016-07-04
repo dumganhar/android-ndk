@@ -27,8 +27,8 @@ THE SOFTWARE.
 #include "audio/android/AudioPlayerProvider.h"
 #include "audio/android/UrlAudioPlayer.h"
 #include "audio/android/AudioDecoder.h"
-#include "audio/android/PcmAudioPlayer.h"
-#include "audio/android/PcmAudioPlayerPool.h"
+#include "audio/android/PcmAudioService.h"
+//#include "audio/android/PcmAudioPlayerPool.h"
 
 #include <sys/system_properties.h>
 #include <stdlib.h>
@@ -82,8 +82,8 @@ AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outp
     LOGD("deviceSampleRate: %d, bufferSizeInFrames: %d", _deviceSampleRate, _bufferSizeInFrames);
     if (getSystemAPILevel() >= 17)
     {
-        _pcmAudioPlayerPool = new (std::nothrow) PcmAudioPlayerPool(engineItf, outputMixObject, deviceSampleRate,
-                                                     bufferSizeInFrames);
+//        _pcmAudioPlayerPool = new (std::nothrow) PcmAudioPlayerPool(engineItf, outputMixObject, deviceSampleRate,
+//                                                     bufferSizeInFrames);
     }
 }
 
@@ -120,43 +120,43 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
     IAudioPlayer* player = nullptr;
 
     PcmData pcmData;
-    auto iter = _pcmCache.find(audioFilePath);
-    if (iter != _pcmCache.end())
-    {// Found pcm cache means it was used to be a PcmAudioPlayer
-        pcmData = iter->second;
-        player = obtainPcmAudioPlayer(audioFilePath, pcmData);
-        if (player == nullptr)
-        {
-            //TODO: Do we need to create an UrlAudioPlayer instead ?
-//            LOGD("1, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
-//            AudioFileInfo info  = getFileInfo(audioFilePath);
-//            player = createUrlAudioPlayer(info);
-        }
-    }
-    else
-    {
-        // Check audio file size to determine to use a PcmAudioPlayer or UrlAudioPlayer,
-        // generally PcmAudioPlayer is used for playing short audio like game effects while
-        // playing background music uses UrlAudioPlayer
-        AudioFileInfo info  = getFileInfo(audioFilePath);
-        if (info.isValid())
-        {
-            if (isSmallFile(info))
-            {
-                pcmData = preloadEffect(info);
-                player = obtainPcmAudioPlayer(info.url, pcmData);
-                if (player == nullptr)
-                {
-                    LOGD("2, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
-                    player = createUrlAudioPlayer(info);
-                }
-            }
-            else
-            {
-                player = createUrlAudioPlayer(info);
-            }
-        }
-    }
+//cjh    auto iter = _pcmCache.find(audioFilePath);
+//    if (iter != _pcmCache.end())
+//    {// Found pcm cache means it was used to be a PcmAudioService
+//        pcmData = iter->second;
+//        player = obtainPcmAudioPlayer(audioFilePath, pcmData);
+//        if (player == nullptr)
+//        {
+//            //TODO: Do we need to create an UrlAudioPlayer instead ?
+////            LOGD("1, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
+////            AudioFileInfo info  = getFileInfo(audioFilePath);
+////            player = createUrlAudioPlayer(info);
+//        }
+//    }
+//    else
+//    {
+//        // Check audio file size to determine to use a PcmAudioService or UrlAudioPlayer,
+//        // generally PcmAudioService is used for playing short audio like game effects while
+//        // playing background music uses UrlAudioPlayer
+//        AudioFileInfo info  = getFileInfo(audioFilePath);
+//        if (info.isValid())
+//        {
+//            if (isSmallFile(info))
+//            {
+//                pcmData = preloadEffect(info);
+//                player = obtainPcmAudioPlayer(info.url, pcmData);
+//                if (player == nullptr)
+//                {
+//                    LOGD("2, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
+//                    player = createUrlAudioPlayer(info);
+//                }
+//            }
+//            else
+//            {
+//                player = createUrlAudioPlayer(info);
+//            }
+//        }
+//    }
 
     return player;
 }
@@ -304,22 +304,22 @@ void AudioPlayerProvider::clearAllPcmCaches()
     _pcmCache.clear();
 }
 
-PcmAudioPlayer *AudioPlayerProvider::obtainPcmAudioPlayer(const std::string &url,
-                                                          const PcmData &pcmData)
+PcmAudioService *AudioPlayerProvider::obtainPcmAudioPlayer(const std::string &url,
+                                                           const PcmData &pcmData)
 {
-    PcmAudioPlayer* pcmPlayer = nullptr;
-    if (pcmData.isValid())
-    {
-        pcmPlayer = _pcmAudioPlayerPool->findAvailablePlayer(pcmData.numChannels);
-        if (pcmPlayer != nullptr)
-        {
-            pcmPlayer->prepare(url, pcmData);
-        }
-    }
-    else
-    {
-        LOGE("obtainPcmAudioPlayer failed, pcmData isn't valid!");
-    }
+    PcmAudioService * pcmPlayer = nullptr;
+//    if (pcmData.isValid())
+//    {
+//        pcmPlayer = _pcmAudioPlayerPool->findAvailablePlayer(pcmData.numChannels);
+//        if (pcmPlayer != nullptr)
+//        {
+//            pcmPlayer->prepare(url, pcmData);
+//        }
+//    }
+//    else
+//    {
+//        LOGE("obtainPcmAudioPlayer failed, pcmData isn't valid!");
+//    }
     return pcmPlayer;
 }
 
@@ -344,16 +344,16 @@ UrlAudioPlayer *AudioPlayerProvider::createUrlAudioPlayer(
 
 void AudioPlayerProvider::pause()
 {
-    if (_pcmAudioPlayerPool != nullptr)
-    {
-        _pcmAudioPlayerPool->releaseUnusedPlayers();
-    }
+//    if (_pcmAudioPlayerPool != nullptr)
+//    {
+//        _pcmAudioPlayerPool->releaseUnusedPlayers();
+//    }
 }
 
 void AudioPlayerProvider::resume()
 {
-    if (_pcmAudioPlayerPool != nullptr)
-    {
-        _pcmAudioPlayerPool->prepareEnoughPlayers();
-    }
+//    if (_pcmAudioPlayerPool != nullptr)
+//    {
+//        _pcmAudioPlayerPool->prepareEnoughPlayers();
+//    }
 }

@@ -27,7 +27,7 @@
 //#include <cutils/compiler.h>
 //#include <cutils/properties.h>
 
-//#include <utils/Log.h>
+#include "cutils/log.h"
 #include "audio_utils/primitives.h"
 
 #include "audio/android/AudioResamplerSinc.h"
@@ -604,4 +604,4 @@ void AudioResamplerSinc::interpolate(
     }
 }
 // ----------------------------------------------------------------------------
-} // namespace android
+} // namespace cocos2d

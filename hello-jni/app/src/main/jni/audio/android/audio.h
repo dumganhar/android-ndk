@@ -2,60 +2,14 @@
 // Created by James Chen on 6/30/16.
 //
 
-#ifndef HELLO_JNI_AUDIO_H_H
-#define HELLO_JNI_AUDIO_H_H
+#ifndef COCOS_AUDIO_H
+#define COCOS_AUDIO_H
 
 // ----------------------------------------------------------------------------
 
 #include <stdint.h>
 #include <android/log.h>
-#define popcount(...) (0) //cjh FIXME:
-
-#ifndef __predict_false
-#define __predict_false(exp) __builtin_expect((exp) != 0, 0)
-#endif
-
-#define ALOGV(...)  __android_log_print(ANDROID_LOG_VERBOSE, LOG_TAG, __VA_ARGS__)
-#define ALOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define ALOGW(...)  __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
-#define ALOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-
-#define ALOGV_IF(conf, ...) if (conf) { __android_log_print(ANDROID_LOG_VERBOSE, LOG_TAG, __VA_ARGS__);}
-#define ALOGD_IF(conf, ...) if (conf) { __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__);}
-#define ALOGW_IF(conf, ...) if (conf) { __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__);}
-#define ALOGE_IF(conf, ...) if (conf) { __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__);}
-
-//#define LOG_ALWAYS_FATAL_IF(conf, ...) if (conf) { __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__); }
-
-
-#define LOG_ALWAYS_FATAL_IF(cond, ...) \
-    ( (__predict_false(cond)) \
-    ? ((void)android_printAssert(#cond, LOG_TAG, ## __VA_ARGS__)) \
-    : (void)0 )
-
-
-/* XXX Macros to work around syntax errors in places where format string
- * arg is not passed to ALOG_ASSERT, LOG_ALWAYS_FATAL or LOG_ALWAYS_FATAL_IF
- * (happens only in debug builds).
- */
-
-/* Returns 2nd arg.  Used to substitute default value if caller's vararg list
- * is empty.
- */
-#define __android_second(dummy, second, ...)     second
-
-/* If passed multiple args, returns ',' followed by all but 1st arg, otherwise
- * returns nothing.
- */
-#define __android_rest(first, ...)               , ## __VA_ARGS__
-
-#define android_printAssert(cond, tag, ...) \
-    __android_log_assert(cond, tag, \
-        __android_second(0, ## __VA_ARGS__, NULL) __android_rest(__VA_ARGS__))
-
-
-#define LOG_ALWAYS_FATAL(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-#define ALOG_ASSERT(conf, ...) assert(conf)
+#include "cutils/bitops.h"
 
 #define PROPERTY_VALUE_MAX 256
 #define CONSTEXPR constexpr
@@ -407,6 +361,40 @@ static inline uint32_t audio_channel_count_from_out_mask(audio_channel_mask_t ch
     }
 }
 
+static inline bool audio_is_valid_format(audio_format_t format)
+{
+    switch (format & AUDIO_FORMAT_MAIN_MASK) {
+        case AUDIO_FORMAT_PCM:
+            switch (format) {
+                case AUDIO_FORMAT_PCM_16_BIT:
+                case AUDIO_FORMAT_PCM_8_BIT:
+                case AUDIO_FORMAT_PCM_32_BIT:
+                case AUDIO_FORMAT_PCM_8_24_BIT:
+                case AUDIO_FORMAT_PCM_FLOAT:
+                case AUDIO_FORMAT_PCM_24_BIT_PACKED:
+                    return true;
+                default:
+                    return false;
+            }
+            /* not reached */
+        case AUDIO_FORMAT_MP3:
+        case AUDIO_FORMAT_AMR_NB:
+        case AUDIO_FORMAT_AMR_WB:
+        case AUDIO_FORMAT_AAC:
+        case AUDIO_FORMAT_HE_AAC_V1:
+        case AUDIO_FORMAT_HE_AAC_V2:
+        case AUDIO_FORMAT_VORBIS:
+        case AUDIO_FORMAT_OPUS:
+        case AUDIO_FORMAT_AC3:
+        case AUDIO_FORMAT_E_AC3:
+        case AUDIO_FORMAT_DTS:
+        case AUDIO_FORMAT_DTS_HD:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static inline bool audio_is_linear_pcm(audio_format_t format)
 {
     return ((format & AUDIO_FORMAT_MAIN_MASK) == AUDIO_FORMAT_PCM);
@@ -494,4 +482,4 @@ static inline audio_channel_mask_t audio_channel_out_mask_from_count(uint32_t ch
             AUDIO_CHANNEL_REPRESENTATION_POSITION, bits);
 }
 
-#endif //HELLO_JNI_AUDIO_H_H
+#endif //COCOS_AUDIO_H

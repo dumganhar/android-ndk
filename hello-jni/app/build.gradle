@@ -16,8 +16,8 @@ model {
         ndk {
             moduleName = 'hello-jni'
             toolchain = 'clang'
-            CFlags.addAll(['-Wall', "-I" + file("src/main/jni").absolutePath, "-I" + file("src/main/jni/audio/android/audio_utils/include").absolutePath])
-            cppFlags.addAll(['-std=c++11', '-Wall', "-I" + file("src/main/jni").absolutePath, "-I" + file("src/main/jni/audio/android/audio_utils/include").absolutePath])
+            CFlags.addAll(['-Wall', "-I" + file("src/main/jni").absolutePath, "-I" + file("src/main/jni/audio/android/audio_utils/include").absolutePath, "-I" + file("src/main/jni/audio/android").absolutePath])
+            cppFlags.addAll(['-std=c++11', '-Wall', "-I" + file("src/main/jni").absolutePath, "-I" + file("src/main/jni/audio/android/audio_utils/include").absolutePath, "-I" + file("src/main/jni/audio/android").absolutePath])
             ldLibs.addAll(['log', 'OpenSLES', 'android'])
             stl 'gnustl_static'
         }

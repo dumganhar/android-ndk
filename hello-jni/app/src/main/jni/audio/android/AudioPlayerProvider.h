@@ -33,7 +33,7 @@ THE SOFTWARE.
 
 // Manage PcmAudioPlayerPool & UrlAudioPlayer
 
-class PcmAudioPlayer;
+class PcmAudioService;
 class UrlAudioPlayer;
 class PcmAudioPlayerPool;
 
@@ -71,7 +71,7 @@ private:
         }
     };
 
-    PcmAudioPlayer* obtainPcmAudioPlayer(const std::string& url, const PcmData& pcmData);
+    PcmAudioService * obtainPcmAudioPlayer(const std::string& url, const PcmData& pcmData);
     UrlAudioPlayer* createUrlAudioPlayer(const AudioFileInfo& info);
 
     PcmData preloadEffect(const AudioFileInfo& info);

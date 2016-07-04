@@ -64,6 +64,6 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-} // namespace android
+} // namespace cocos2d
 
 #endif /*ANDROID_AUDIO_RESAMPLER_CUBIC_H*/

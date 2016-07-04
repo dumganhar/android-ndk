@@ -18,6 +18,7 @@
 #define ANDROID_AUDIO_TEST_UTILS_H
 
 #include <audio_utils/sndfile.h>
+#include "cutils/log.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))

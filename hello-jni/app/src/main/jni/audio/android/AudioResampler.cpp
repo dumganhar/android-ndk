@@ -22,7 +22,7 @@
 #include <sys/types.h>
 #include <pthread.h>
 #include <new>
-//#include <cutils/log.h>
+#include "cutils/log.h"
 //#include <cutils/properties.h>
 #include "audio_utils/primitives.h"
 #include "audio/android/AudioResampler.h"
@@ -784,4 +784,4 @@ void AudioResamplerOrder1::AsmStereo16Loop(int16_t *in, int32_t* maxOutPt, int32
 
 // ----------------------------------------------------------------------------
 
-} // namespace android
+} // namespace cocos2d

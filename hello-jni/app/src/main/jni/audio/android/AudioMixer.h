@@ -393,6 +393,6 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-} // namespace android
+} // namespace cocos2d
 
 #endif // ANDROID_AUDIO_MIXER_H

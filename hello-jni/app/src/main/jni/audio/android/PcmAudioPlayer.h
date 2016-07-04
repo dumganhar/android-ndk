@@ -1,40 +1,14 @@
-/****************************************************************************
-Copyright (c) 2016 Chukong Technologies Inc.
+//
+// Created by James Chen on 7/4/16.
+//
 
-http://www.cocos2d-x.org
+#ifndef HELLO_JNI_PCMAUDIOPLAYER_H
+#define HELLO_JNI_PCMAUDIOPLAYER_H
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-****************************************************************************/
-
-#ifndef COCOS_PCMAUDIOPLAYER_H
-#define COCOS_PCMAUDIOPLAYER_H
-
-#include "audio/android/IAudioPlayer.h"
-#include "audio/android/OpenSLHelper.h"
-#include "audio/android/PcmData.h"
-#include "audio/android/CCThreadPool.h"
 
 #include <mutex>
-#include <condition_variable>
-#include <chrono>
-
-class ThreadPool;
+#include "IAudioPlayer.h"
+#include "PcmData.h"
 
 class PcmAudioPlayer : public IAudioPlayer
 {
@@ -65,40 +39,15 @@ public:
 
     // Override Functions End
 
-    inline int getChannelCount() const { return _numChannels; };
-    inline int getSampleRate() const { return _sampleRate; };
-
 private:
-    PcmAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject, ThreadPool* threadPool);
-    virtual ~PcmAudioPlayer();
-
-    bool init(int numChannels, int sampleRate, int bufferSizeInBytes);
-
+    PcmAudioPlayer();
     bool prepare(const std::string& url, const PcmData& decResult);
-
-    void onPlayOver();
-    bool enqueue();
-
-    void bqFetchBufferCallback(SLAndroidSimpleBufferQueueItf bq);
-
     void setState(State state);
 
 private:
-    SLEngineItf _engineItf;
-    SLObjectItf _outputMixObj;
-
     int _id;
     std::string _url;
     PcmData _decResult;
-
-    SLObjectItf _playObj;
-    SLPlayItf _playItf;
-    SLVolumeItf _volumeItf;
-    SLAndroidSimpleBufferQueueItf _bufferQueueItf;
-
-    int _numChannels;
-    int _sampleRate;
-    int _bufferSizeInBytes;
 
     float _volume;
     bool _isLoop;
@@ -106,18 +55,8 @@ private:
 
     std::mutex _stateMutex;
 
-    int _currentBufferIndex;
     PlayEventCallback _playEventCallback;
-
-    std::chrono::high_resolution_clock::time_point _playStartTime;
-    bool _isFirstTimeInBqCallback;
-
-    ThreadPool* _threadPool;
-
-    friend class SLPcmAudioPlayerCallbackProxy;
-    friend class PcmAudioPlayerPool;
-    friend class AudioPlayerProvider;
 };
 
 
-#endif //COCOS_PCMAUDIOPLAYER_H
+#endif //HELLO_JNI_PCMAUDIOPLAYER_H
