@@ -21,7 +21,7 @@
 #ifdef CPU_FREQUENCY_STATISTICS
 #include <cpustats/ThreadCpuUsage.h>
 #endif
-#include <utils/Thread.h>
+#include "utils/Thread.h"
 #include "FastThreadState.h"
 #include "utils/Errors.h"
 

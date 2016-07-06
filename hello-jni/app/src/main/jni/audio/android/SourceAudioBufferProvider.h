@@ -19,6 +19,7 @@
 #ifndef ANDROID_SOURCE_AUDIO_BUFFER_PROVIDER_H
 #define ANDROID_SOURCE_AUDIO_BUFFER_PROVIDER_H
 
+#include <memory>
 #include "NBAIO.h"
 #include "ExtendedAudioBufferProvider.h"
 
@@ -27,7 +28,7 @@ namespace cocos2d {
 class SourceAudioBufferProvider : public ExtendedAudioBufferProvider {
 
 public:
-    SourceAudioBufferProvider(const sp<NBAIO_Source>& source);
+    SourceAudioBufferProvider(const std::shared_ptr<NBAIO_Source>& source);
     virtual ~SourceAudioBufferProvider();
 
     // AudioBufferProvider interface
@@ -40,7 +41,7 @@ public:
     virtual void     onTimestamp(const AudioTimestamp& timestamp);
 
 private:
-    /*cjh const */sp<NBAIO_Source> mSource;     // the wrapped source
+    /*cjh const */std::shared_ptr<NBAIO_Source> mSource;     // the wrapped source
     /*const*/ size_t    mFrameSize; // frame size in bytes
     void*               mAllocated; // pointer to base of allocated memory
     size_t              mSize;      // size of mAllocated in frames

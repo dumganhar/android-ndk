@@ -5,9 +5,6 @@
 #ifndef COCOS_AUDIOFLINGER_H
 #define COCOS_AUDIOFLINGER_H
 
-#include "utils/StrongPointer.h"
-#include "utils/SortedVector.h"
-
 #include "FastMixer.h"
 #include "Track.h"
 
@@ -32,15 +29,17 @@ public:
         // suspend by audio policy manager is orthogonal to mixer state
     };
 
-    mixer_state prepareTracks(Vector<sp<Track>>* tracksToRemove);
 
-    status_t addTrack(const sp<Track>& track);
-    void removeTrack(const sp<Track>& track);
-    void removeTracks(const Vector< sp<Track> >& tracksToRemove);
+
+    status_t addTrack(Track* track);
+    void removeTrack(Track* track);
+    void removeTracks(const std::vector<Track*>& tracksToRemove);
 
 private:
+    mixer_state prepareTracks(std::vector<Track*>* tracksToRemove);
 
-    sp<FastMixer> mFastMixer;     // non-0 if there is also a fast mixer
+private:
+    FastMixer* mFastMixer;     // non-0 if there is also a fast mixer
 
     // accessible only within the threadLoop(), no locks required
     //          mFastMixer->sq()    // for mutating and pushing state
@@ -62,12 +61,12 @@ private:
 
 
     // The HAL output sink is treated as non-blocking, but current implementation is blocking
-    sp<NBAIO_Sink>          mOutputSink;
+    std::shared_ptr<NBAIO_Sink>          mOutputSink;
 
-    SortedVector< wp<Track> >       mActiveTracks;  // FIXME check if this could be sp<>
-    SortedVector<int>               mWakeLockUids;
+    std::vector<Track*>       mActiveTracks;  // FIXME check if this could be sp<>
+    std::vector<int>               mWakeLockUids;
     int                             mActiveTracksGeneration;
-    wp<Track>                       mLatestActiveTrack; // latest track added to mActiveTracks
+    Track*                       mLatestActiveTrack; // latest track added to mActiveTracks
 
     unsigned    mFastTrackAvailMask;    // bit i set if fast track [i] is available
 

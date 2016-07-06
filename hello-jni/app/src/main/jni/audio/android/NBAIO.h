@@ -27,7 +27,6 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <utils/Errors.h>
-#include <utils/RefBase.h>
 #include "AudioTimestamp.h"
 #include "audio.h"
 
@@ -89,7 +88,7 @@ bool Format_isValid(const NBAIO_Format& format);
 bool Format_isEqual(const NBAIO_Format& format1, const NBAIO_Format& format2);
 
 // Abstract class (interface) representing a data port.
-class NBAIO_Port : public RefBase {
+class NBAIO_Port {
 
 public:
 

@@ -13,7 +13,7 @@ namespace cocos2d {
 
 class AudioFlinger;
 
-class Track : public ExtendedAudioBufferProvider, public RefBase, public VolumeProvider
+class Track : public ExtendedAudioBufferProvider, public VolumeProvider
 {
 public:
 

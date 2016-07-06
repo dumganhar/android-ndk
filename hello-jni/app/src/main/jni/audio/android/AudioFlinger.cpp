@@ -2,13 +2,16 @@
 // Created by James Chen on 7/5/16.
 //
 
-#include <linux/futex.h>
-#include <asm/unistd.h>
-#include <sys/syscall.h>
+
 #include "AudioFlinger.h"
 #include "SourceAudioBufferProvider.h"
 #include "PcmSource.h"
 #include "PcmSink.h"
+
+#include <linux/futex.h>
+#include <asm/unistd.h>
+#include <sys/syscall.h>
+#include <algorithm>
 
 namespace cocos2d {
 
@@ -42,7 +45,7 @@ AudioFlinger::~AudioFlinger()
         ALOG_ASSERT(fastTrack->mBufferProvider != NULL);
         delete fastTrack->mBufferProvider;
         sq->end(false /*didModify*/);
-        mFastMixer.clear();
+        delete mFastMixer;
 #ifdef AUDIO_WATCHDOG
         if (mAudioWatchdog != 0) {
             mAudioWatchdog->requestExit();
@@ -56,7 +59,7 @@ AudioFlinger::~AudioFlinger()
 bool AudioFlinger::init(const NBAIO_Format& format)
 {
     // create an NBAIO sink for the HAL output stream, and negotiate
-    mOutputSink = new PcmSink();
+    mOutputSink = std::make_shared<PcmSink>();
 
     // create fast mixer and configure it initially with just one fast track for our submix
     mFastMixer = new FastMixer();
@@ -68,7 +71,8 @@ bool AudioFlinger::init(const NBAIO_Format& format)
     FastMixerState *state = sq->begin();
     FastTrack *fastTrack = &state->mFastTracks[0];
     // wrap the source side of the MonoPipe to make it an AudioBufferProvider
-    fastTrack->mBufferProvider = new SourceAudioBufferProvider(new PcmSource(format));
+    auto source = std::make_shared<PcmSource>(format);
+    fastTrack->mBufferProvider = new SourceAudioBufferProvider(source);
     fastTrack->mVolumeProvider = NULL;
     fastTrack->mChannelMask = mChannelMask; // mPipeSink channel mask for audio to FastMixer
     fastTrack->mFormat = mFormat; // mPipeSink format for audio to FastMixer
@@ -94,14 +98,14 @@ bool AudioFlinger::init(const NBAIO_Format& format)
     sq->push(FastMixerStateQueue::BLOCK_UNTIL_PUSHED);
 
     // start the fast mixer
-    mFastMixer->run("FastMixer", PRIORITY_URGENT_AUDIO);
+    mFastMixer->run();
 //    pid_t tid = mFastMixer->getTid();
 //    sendPrioConfigEvent(getpid_cached, tid, kPriorityFastMixer);
 
     return true;
 }
 
-AudioFlinger::mixer_state AudioFlinger::prepareTracks(Vector<sp<Track>>* tracksToRemove)
+AudioFlinger::mixer_state AudioFlinger::prepareTracks(std::vector<Track*>* tracksToRemove)
 {
     mixer_state mixerStatus = MIXER_IDLE;
     size_t count = mActiveTracks.size();
@@ -119,13 +123,13 @@ AudioFlinger::mixer_state AudioFlinger::prepareTracks(Vector<sp<Track>>* tracksT
     }
 
     for (size_t i=0 ; i<count ; i++) {
-        const sp<Track> t = mActiveTracks[i].promote();
-        if (t == 0) {
+        Track* t = mActiveTracks[i];
+        if (t == nullptr) {
             continue;
         }
 
         // this const just means the local variable doesn't change
-        Track* const track = t.get();
+        Track* track = t;
 
         // process fast tracks
         if (track->isFastTrack()) {
@@ -228,7 +232,7 @@ AudioFlinger::mixer_state AudioFlinger::prepareTracks(Vector<sp<Track>>* tracksT
                 } else {
                     LOG_ALWAYS_FATAL("fast track %d should have been active", j);
                 }
-                tracksToRemove->add(track);
+                tracksToRemove->push_back(track);
             }
             continue;
         }
@@ -270,11 +274,11 @@ AudioFlinger::mixer_state AudioFlinger::prepareTracks(Vector<sp<Track>>* tracksT
         size_t i = __builtin_ctz(resetMask);
         ALOG_ASSERT(i < count);
         resetMask &= ~(1 << i);
-        sp<Track> t = mActiveTracks[i].promote();
-        if (t == 0) {
+        Track* t = mActiveTracks[i];
+        if (t == nullptr) {
             continue;
         }
-        Track* track = t.get();
+        Track* track = t;
         ALOG_ASSERT(track->isFastTrack() && track->isStopped());
         track->reset();
     }
@@ -285,14 +289,15 @@ AudioFlinger::mixer_state AudioFlinger::prepareTracks(Vector<sp<Track>>* tracksT
     return mixerStatus;
 }
 
-status_t AudioFlinger::addTrack(const sp<Track> &track)
+status_t AudioFlinger::addTrack(Track* track)
 {
     status_t status = ALREADY_EXISTS;
 
-    if (mActiveTracks.indexOf(track) < 0)
+    auto iter = std::find(mActiveTracks.begin(), mActiveTracks.end(), track);
+    if (iter == mActiveTracks.end())
     {
-        mActiveTracks.add(track);
-        mWakeLockUids.add(track->uid());
+        mActiveTracks.push_back(track);
+        mWakeLockUids.push_back(track->uid());
         mActiveTracksGeneration++;
         mLatestActiveTrack = track;
 
@@ -304,15 +309,26 @@ status_t AudioFlinger::addTrack(const sp<Track> &track)
     return status;
 }
 
+template <typename T>
+static void removeItemFromVector(std::vector<T>& v, T item)
+{
+    auto iter = std::find(v.begin(), v.end(), item);
+    if (iter != v.end())
+    {
+        v.erase(iter);
+    }
+}
+
 // removeTracks_l() must be called with ThreadBase::mLock held
-void AudioFlinger::removeTracks(const Vector< sp<Track> >& tracksToRemove)
+void AudioFlinger::removeTracks(const std::vector<Track*>& tracksToRemove)
 {
     size_t count = tracksToRemove.size();
-    if (count > 0) {
+    if (count > 0)
+    {
         for (size_t i=0 ; i<count ; i++) {
-            const sp<Track>& track = tracksToRemove.itemAt(i);
-            mActiveTracks.remove(track);
-            mWakeLockUids.remove(track->uid());
+            Track* track = tracksToRemove.at(i);
+            removeItemFromVector(mActiveTracks, track);
+            removeItemFromVector(mWakeLockUids, track->uid());
             mActiveTracksGeneration++;
             ALOGV("removeTracks_l removing track");
             if (track->isTerminated()) {
@@ -322,7 +338,7 @@ void AudioFlinger::removeTracks(const Vector< sp<Track> >& tracksToRemove)
     }
 }
 
-void AudioFlinger::removeTrack(const sp<Track>& track)
+void AudioFlinger::removeTrack(Track* track)
 {
     if (track->isFastTrack()) {
         int index = track->mFastIndex;

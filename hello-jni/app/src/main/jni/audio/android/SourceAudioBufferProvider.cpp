@@ -22,7 +22,7 @@
 
 namespace cocos2d {
 
-SourceAudioBufferProvider::SourceAudioBufferProvider(const sp<NBAIO_Source>& source) :
+SourceAudioBufferProvider::SourceAudioBufferProvider(const std::shared_ptr<NBAIO_Source>& source) :
     mSource(source),
     // mFrameSize below
     mAllocated(NULL), mSize(0), mOffset(0), mRemaining(0), mGetCount(0), mFramesReleased(0)

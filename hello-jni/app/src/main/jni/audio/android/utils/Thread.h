@@ -21,22 +21,20 @@
 #include <sys/types.h>
 #include <time.h>
 
-#if !defined(_WIN32)
-# include <pthread.h>
-#endif
+#include <thread>
 
-#include <utils/Condition.h>
 #include <utils/Errors.h>
-#include <utils/Mutex.h>
-#include <utils/RefBase.h>
 #include <utils/Timers.h>
-#include <utils/ThreadDefs.h>
+
+#include <memory>
+#include <mutex>
+#include <condition_variable>
 
 // ---------------------------------------------------------------------------
 namespace cocos2d {
 // ---------------------------------------------------------------------------
 
-class Thread : virtual public RefBase
+class Thread
 {
 public:
     // Create a Thread object, but doesn't create or start the associated
@@ -45,9 +43,7 @@ public:
     virtual             ~Thread();
 
     // Start the thread in threadLoop() which needs to be implemented.
-    virtual status_t    run(    const char* name = 0,
-                                int32_t priority = PRIORITY_DEFAULT,
-                                size_t stack = 0);
+    virtual status_t    run();
     
     // Ask this object's thread to exit. This function is asynchronous, when the
     // function returns the thread might still be running. Of course, this
@@ -61,24 +57,22 @@ public:
     // BE VERY CAREFUL of deadlocks. In particular, it would be silly to call
     // this function from this object's thread. Will return WOULD_BLOCK in
     // that case.
-            status_t    requestExitAndWait();
+    status_t    requestExitAndWait();
 
     // Wait until this object's thread exits. Returns immediately if not yet running.
     // Do not call from this object's thread; will return WOULD_BLOCK in that case.
-            status_t    join();
+    status_t    join();
 
     // Indicates whether this thread is running or not.
-            bool        isRunning() const;
+    bool        isRunning() const;
 
-#if defined(__ANDROID__)
     // Return the thread's kernel ID, same as the thread itself calling gettid(),
     // or -1 if the thread is not running.
-            pid_t       getTid() const;
-#endif
+    std::thread::id       getTid() const;
 
 protected:
     // exitPending() returns true if requestExit() has been called.
-            bool        exitPending() const;
+    bool        exitPending() const;
     
 private:
     // Derived class must implement threadLoop(). The thread starts its life
@@ -91,21 +85,18 @@ private:
 private:
     Thread& operator=(const Thread&);
     static  int             _threadLoop(void* user);
-    const   bool            mCanCallJava;
     // always hold mLock when reading or writing
-            thread_id_t     mThread;
-    mutable Mutex           mLock;
-            Condition       mThreadExitedCondition;
-            status_t        mStatus;
+    std::thread*     mThread;
+    mutable std::mutex           mLock;
+    std::condition_variable       mThreadExitedCondition;
+    status_t        mStatus;
     // note that all accesses of mExitPending and mRunning need to hold mLock
     volatile bool           mExitPending;
     volatile bool           mRunning;
-            sp<Thread>      mHoldSelf;
-#if defined(__ANDROID__)
+    std::shared_ptr<Thread> mHoldSelf;
     // legacy for debugging, not used by getTid() as it is set by the child thread
     // and so is not initialized until the child reaches that point
-            pid_t           mTid;
-#endif
+    std::thread::id           mTid;
 };
 
 
