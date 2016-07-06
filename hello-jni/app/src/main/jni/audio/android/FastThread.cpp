@@ -132,7 +132,7 @@ bool FastThread::threadLoop()
             //  non-idle -> idle        update previous from copy of current
             //  idle     -> idle        don't update previous
             //  idle     -> non-idle    don't update previous
-            if (!(mCurrent->mCommand & FastThreadState::IDLE)) {
+            if (!(mCurrent->mCommand & FastThreadState::IDLE)) { //cjh Do we need to check whether mCurrent is nullptr?
                 if (mCommand & FastThreadState::IDLE) {
                     onIdle();
                     mOldTsValid = false;

@@ -175,7 +175,7 @@ void FastMixer::onStateChange()
         dumpState->mSampleRate = mSampleRate;
     }
 
-    if ((!Format_isEqual(mFormat, previousFormat)) || (frameCount != previous->mFrameCount)) {
+    if ((!Format_isEqual(mFormat, previousFormat)) || (frameCount != previous->mFrameCount)) { //cjh Do we need to check nullptr for `previous`?
         // FIXME to avoid priority inversion, don't delete here
         delete mMixer;
         mMixer = NULL;

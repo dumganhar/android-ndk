@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
+#ifndef LOG_TAG
 #define LOG_TAG "StateQueue"
+#endif
 //#define LOG_NDEBUG 0
 
 //cjh#include "Configuration.h"

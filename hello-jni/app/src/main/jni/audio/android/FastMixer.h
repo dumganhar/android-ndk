@@ -32,13 +32,13 @@ typedef StateQueue<FastMixerState> FastMixerStateQueue;
 class FastMixer : public FastThread {
 
 public:
-            FastMixer();
+    FastMixer();
     virtual ~FastMixer();
 
-            FastMixerStateQueue* sq();
+    FastMixerStateQueue* sq();
 
 private:
-            FastMixerStateQueue mSQ;
+    FastMixerStateQueue mSQ;
 
     // callouts
     virtual const FastThreadState *poll();
