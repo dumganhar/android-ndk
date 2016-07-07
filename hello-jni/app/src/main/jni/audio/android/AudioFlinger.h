@@ -5,72 +5,83 @@
 #ifndef COCOS_AUDIOFLINGER_H
 #define COCOS_AUDIOFLINGER_H
 
-#include "FastMixer.h"
-#include "Track.h"
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <vector>
+#include <audio/android/utils/Errors.h>
 
 namespace cocos2d {
+
+class Track;
+class AudioMixer;
 
 class AudioFlinger
 {
 public:
-    AudioFlinger();
+    AudioFlinger(int bufferSizeInFrames, int sampleRate, int channelCount);
 
     ~AudioFlinger();
 
-    bool init(const NBAIO_Format& format);
+    bool init();
 
-    enum mixer_state {
-        MIXER_IDLE,             // no active tracks
-        MIXER_TRACKS_ENABLED,   // at least one active track, but no track has any data ready
-        MIXER_TRACKS_READY,      // at least one active track, and at least one track has data
-        MIXER_DRAIN_TRACK,      // drain currently playing track
-        MIXER_DRAIN_ALL,        // fully drain the hardware
-        // standby mode does not have an enum value
-        // suspend by audio policy manager is orthogonal to mixer state
+    bool addTrack(Track *track);
+    void switchBuffers();
+    bool hasActiveTracks();
+    bool isCurrentBufferFull();
+    bool isAllBuffersFull();
+
+    void pause();
+    void resume();
+    inline bool isPaused() const { return _isPaused; };
+
+    enum class BufferState
+    {
+        BUSY,
+        EMPTY,
+        FULL
     };
 
+    struct OutputBuffer
+    {
+        void* buf;
+        size_t size;
+        BufferState state;
+    };
 
-
-    status_t addTrack(Track* track);
-    void removeTrack(Track* track);
-    void removeTracks(const std::vector<Track*>& tracksToRemove);
+    inline OutputBuffer* current() { return _current; }
 
 private:
-    mixer_state prepareTracks(std::vector<Track*>* tracksToRemove);
+    void destroy();
+    void mixingThreadLoop();
 
 private:
-    FastMixer* mFastMixer;     // non-0 if there is also a fast mixer
+    int _bufferSizeInFrames;
+    int _sampleRate;
+    int _channelCount;
 
-    // accessible only within the threadLoop(), no locks required
-    //          mFastMixer->sq()    // for mutating and pushing state
-    int32_t     mFastMixerFutex;    // for cold idle
-// contents are not guaranteed to be consistent, no locks required
-    FastMixerDumpState mFastMixerDumpState;
+    std::thread* _mixingThread;
 
+    std::mutex _mixingMutex;
+    std::condition_variable _mixingCondition;
 
-    uint32_t                mSampleRate;
-    size_t                  mFrameCount;       // output HAL, direct output, record
-    audio_channel_mask_t    mChannelMask;
-    uint32_t                mChannelCount;
-    size_t                  mFrameSize;
-    // not HAL frame size, this is for output sink (to pipe to fast mixer)
-    audio_format_t          mFormat;           // Source format for Recording and
-    // Sink format for Playback.
-    // Sink format may be different than
-    // HAL format if Fastmixer is used.
+    AudioMixer* _mixer;
 
+    std::mutex _activeTracksMutex;
+    std::vector<Track*> _activeTracks;
 
-    // The HAL output sink is treated as non-blocking, but current implementation is blocking
-    std::shared_ptr<NBAIO_Sink>          mOutputSink;
+    OutputBuffer _buffers[3];
 
-    std::vector<Track*>       mActiveTracks;  // FIXME check if this could be sp<>
-    std::vector<int>               mWakeLockUids;
-    int                             mActiveTracksGeneration;
-    Track*                       mLatestActiveTrack; // latest track added to mActiveTracks
+    std::mutex _switchMutex;
+    OutputBuffer* _busy;
+    OutputBuffer* _current;
+    OutputBuffer* _next;
 
-    unsigned    mFastTrackAvailMask;    // bit i set if fast track [i] is available
+    OutputBuffer* _mixing;
 
-    friend class Track;
+    std::atomic_bool _isDestroy;
+    std::atomic_bool _isPaused;
 };
 
 } // namespace cocos2d {

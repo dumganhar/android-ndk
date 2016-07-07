@@ -32,23 +32,32 @@ THE SOFTWARE.
 #include <mutex>
 #include <condition_variable>
 
-class AudioMixer;
+namespace cocos2d {
+
+class AudioFlinger;
 
 class PcmAudioService
 {
 public:
-    inline int getChannelCount() const { return _numChannels; };
-    inline int getSampleRate() const { return _sampleRate; };
+    inline int getChannelCount() const
+    { return _numChannels; };
+
+    inline int getSampleRate() const
+    { return _sampleRate; };
 
 private:
     PcmAudioService(SLEngineItf engineItf, SLObjectItf outputMixObject);
+
     virtual ~PcmAudioService();
 
-    bool init(int numChannels, int sampleRate, int bufferSizeInBytes);
+    bool init(AudioFlinger* flinger, int numChannels, int sampleRate, int bufferSizeInBytes);
 
     bool enqueue();
 
     void bqFetchBufferCallback(SLAndroidSimpleBufferQueueItf bq);
+
+    void pause();
+    void resume();
 
 private:
     SLEngineItf _engineItf;
@@ -63,11 +72,13 @@ private:
     int _sampleRate;
     int _bufferSizeInBytes;
 
-    AudioMixer* _mixer;
+    AudioFlinger* _flinger;
 
     friend class SLPcmAudioPlayerCallbackProxy;
+
     friend class AudioPlayerProvider;
 };
 
+} // namespace cocos2d {
 
 #endif //COCOS_PCMAUDIOSERVICE_H

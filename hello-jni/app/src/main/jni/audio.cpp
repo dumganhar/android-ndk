@@ -18,6 +18,8 @@
 
 #define AUDIO_FUNC(NAME)    Java_com_example_hellojni_HelloJni_##NAME
 
+using namespace cocos2d;
+
 static AudioEngine engine;
 static AudioOutputMix output;
 static AAssetManager* __assetManager;

@@ -26,13 +26,16 @@ THE SOFTWARE.
 
 #include "audio/android/AudioPlayerProvider.h"
 #include "audio/android/UrlAudioPlayer.h"
+#include "audio/android/PcmAudioPlayer.h"
 #include "audio/android/AudioDecoder.h"
+#include "audio/android/AudioFlinger.h"
 #include "audio/android/PcmAudioService.h"
-//#include "audio/android/PcmAudioPlayerPool.h"
 
 #include <sys/system_properties.h>
 #include <stdlib.h>
 #include <algorithm> // for std::find_if
+
+namespace cocos2d {
 
 static int getSystemAPILevel()
 {
@@ -65,25 +68,26 @@ struct AudioFileIndicator
 };
 
 static AudioFileIndicator __audioFileIndicator[] = {
-        { "default", 128000}, // If we could not handle the audio format, return default value, the position should be first.
-        { ".wav", 1024000},
-        { ".ogg", 128000},
-        { ".mp3", 160000}
+        {"default", 128000}, // If we could not handle the audio format, return default value, the position should be first.
+        {".wav",    1024000},
+        {".ogg",    128000},
+        {".mp3",    160000}
 };
 
-AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int bufferSizeInFrames, const FdGetterCallback& fdGetterCallback)
-        : _engineItf(engineItf)
-        , _outputMixObject(outputMixObject)
-        , _deviceSampleRate(deviceSampleRate)
-        , _bufferSizeInFrames(bufferSizeInFrames)
-        , _fdGetterCallback(fdGetterCallback)
-        , _pcmAudioPlayerPool(nullptr)
+AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outputMixObject,
+                                         int deviceSampleRate, int bufferSizeInFrames,
+                                         const FdGetterCallback &fdGetterCallback)
+        : _engineItf(engineItf), _outputMixObject(outputMixObject),
+          _deviceSampleRate(deviceSampleRate), _bufferSizeInFrames(bufferSizeInFrames),
+          _fdGetterCallback(fdGetterCallback), _pcmAudioService(nullptr), _audioFlinger(nullptr)
 {
     LOGD("deviceSampleRate: %d, bufferSizeInFrames: %d", _deviceSampleRate, _bufferSizeInFrames);
     if (getSystemAPILevel() >= 17)
     {
-//        _pcmAudioPlayerPool = new (std::nothrow) PcmAudioPlayerPool(engineItf, outputMixObject, deviceSampleRate,
-//                                                     bufferSizeInFrames);
+        _audioFlinger = new (std::nothrow) AudioFlinger(_bufferSizeInFrames, _deviceSampleRate, 2);
+        _audioFlinger->init();
+        _pcmAudioService = new (std::nothrow) PcmAudioService(engineItf, outputMixObject);
+        _pcmAudioService->init(_audioFlinger, 2, deviceSampleRate, bufferSizeInFrames * 2);
     }
 }
 
@@ -93,11 +97,8 @@ AudioPlayerProvider::~AudioPlayerProvider()
     UrlAudioPlayer::stopAll();
     UrlAudioPlayer::update();
 
-    if (_pcmAudioPlayerPool != nullptr)
-    {
-        delete _pcmAudioPlayerPool;
-        _pcmAudioPlayerPool = nullptr;
-    }
+    SL_SAFE_DELETE(_audioFlinger);
+    SL_SAFE_DELETE(_pcmAudioService);
 }
 
 IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePath)
@@ -117,46 +118,39 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
         return nullptr;
     }
 
-    IAudioPlayer* player = nullptr;
+    IAudioPlayer *player = nullptr;
 
     PcmData pcmData;
-//cjh    auto iter = _pcmCache.find(audioFilePath);
-//    if (iter != _pcmCache.end())
-//    {// Found pcm cache means it was used to be a PcmAudioService
-//        pcmData = iter->second;
-//        player = obtainPcmAudioPlayer(audioFilePath, pcmData);
-//        if (player == nullptr)
-//        {
-//            //TODO: Do we need to create an UrlAudioPlayer instead ?
-////            LOGD("1, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
-////            AudioFileInfo info  = getFileInfo(audioFilePath);
-////            player = createUrlAudioPlayer(info);
-//        }
-//    }
-//    else
-//    {
-//        // Check audio file size to determine to use a PcmAudioService or UrlAudioPlayer,
-//        // generally PcmAudioService is used for playing short audio like game effects while
-//        // playing background music uses UrlAudioPlayer
-//        AudioFileInfo info  = getFileInfo(audioFilePath);
-//        if (info.isValid())
-//        {
-//            if (isSmallFile(info))
-//            {
-//                pcmData = preloadEffect(info);
-//                player = obtainPcmAudioPlayer(info.url, pcmData);
-//                if (player == nullptr)
-//                {
-//                    LOGD("2, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
-//                    player = createUrlAudioPlayer(info);
-//                }
-//            }
-//            else
-//            {
-//                player = createUrlAudioPlayer(info);
-//            }
-//        }
-//    }
+    auto iter = _pcmCache.find(audioFilePath);
+    if (iter != _pcmCache.end())
+    {// Found pcm cache means it was used to be a PcmAudioService
+        pcmData = iter->second;
+        player = obtainPcmAudioPlayer(audioFilePath, pcmData);
+    }
+    else
+    {
+        // Check audio file size to determine to use a PcmAudioService or UrlAudioPlayer,
+        // generally PcmAudioService is used for playing short audio like game effects while
+        // playing background music uses UrlAudioPlayer
+        AudioFileInfo info = getFileInfo(audioFilePath);
+        if (info.isValid())
+        {
+            if (isSmallFile(info))
+            {
+                pcmData = preloadEffect(info);
+                player = obtainPcmAudioPlayer(info.url, pcmData);
+                if (player == nullptr)
+                {
+                    LOGD("2, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
+                    player = createUrlAudioPlayer(info);
+                }
+            }
+            else
+            {
+                player = createUrlAudioPlayer(info);
+            }
+        }
+    }
 
     return player;
 }
@@ -167,7 +161,7 @@ PcmData AudioPlayerProvider::preloadEffect(const std::string &audioFilePath)
     return preloadEffect(info);
 }
 
-PcmData AudioPlayerProvider::preloadEffect(const AudioFileInfo& info)
+PcmData AudioPlayerProvider::preloadEffect(const AudioFileInfo &info)
 {
     PcmData pcmData;
     // Pcm data decoding by OpenSLES API only supports in API level 17 and later.
@@ -209,7 +203,8 @@ PcmData AudioPlayerProvider::preloadEffect(const AudioFileInfo& info)
     return pcmData;
 }
 
-AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(const std::string& audioFilePath)
+AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(
+        const std::string &audioFilePath)
 {
     AudioFileInfo info;
     long fileSize = 0;
@@ -233,7 +228,8 @@ AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(const std::s
 
         assetFd = _fdGetterCallback(relativePath, &start, &length);
 
-        if (assetFd <= 0) {
+        if (assetFd <= 0)
+        {
             LOGE("Failed to open file descriptor for '%s'", audioFilePath.c_str());
             return info;
         }
@@ -242,7 +238,7 @@ AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(const std::s
     }
     else
     {
-        FILE* fp = fopen(audioFilePath.c_str(), "rb");
+        FILE *fp = fopen(audioFilePath.c_str(), "rb");
         if (fp != nullptr)
         {
             fseek(fp, 0, SEEK_END);
@@ -265,10 +261,10 @@ AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(const std::s
     return info;
 }
 
-bool AudioPlayerProvider::isSmallFile(const AudioFileInfo& info)
+bool AudioPlayerProvider::isSmallFile(const AudioFileInfo &info)
 {
     //TODO: If file size is smaller than 100k, we think it's a small file. This value should be set by developers.
-    AudioFileInfo& audioFileInfo = const_cast<AudioFileInfo&>(info);
+    AudioFileInfo &audioFileInfo = const_cast<AudioFileInfo &>(info);
     size_t judgeCount = sizeof(__audioFileIndicator) / sizeof(__audioFileIndicator[0]);
     size_t pos = audioFileInfo.url.rfind(".");
     std::string extension;
@@ -276,9 +272,10 @@ bool AudioPlayerProvider::isSmallFile(const AudioFileInfo& info)
     {
         extension = audioFileInfo.url.substr(pos);
     }
-    auto iter = std::find_if(std::begin(__audioFileIndicator), std::end(__audioFileIndicator), [&extension](const AudioFileIndicator & judge) -> bool{
-        return judge.extension == extension;
-    });
+    auto iter = std::find_if(std::begin(__audioFileIndicator), std::end(__audioFileIndicator),
+                             [&extension](const AudioFileIndicator &judge) -> bool {
+                                 return judge.extension == extension;
+                             });
 
     if (iter != std::end(__audioFileIndicator))
     {
@@ -304,22 +301,22 @@ void AudioPlayerProvider::clearAllPcmCaches()
     _pcmCache.clear();
 }
 
-PcmAudioService *AudioPlayerProvider::obtainPcmAudioPlayer(const std::string &url,
+PcmAudioPlayer *AudioPlayerProvider::obtainPcmAudioPlayer(const std::string &url,
                                                            const PcmData &pcmData)
 {
-    PcmAudioService * pcmPlayer = nullptr;
-//    if (pcmData.isValid())
-//    {
-//        pcmPlayer = _pcmAudioPlayerPool->findAvailablePlayer(pcmData.numChannels);
-//        if (pcmPlayer != nullptr)
-//        {
-//            pcmPlayer->prepare(url, pcmData);
-//        }
-//    }
-//    else
-//    {
-//        LOGE("obtainPcmAudioPlayer failed, pcmData isn't valid!");
-//    }
+    PcmAudioPlayer *pcmPlayer = nullptr;
+    if (pcmData.isValid())
+    {
+        pcmPlayer = new(std::nothrow) PcmAudioPlayer(_audioFlinger);
+        if (pcmPlayer != nullptr)
+        {
+            pcmPlayer->prepare(url, pcmData);
+        }
+    }
+    else
+    {
+        LOGE("obtainPcmAudioPlayer failed, pcmData isn't valid!");
+    }
     return pcmPlayer;
 }
 
@@ -333,7 +330,7 @@ UrlAudioPlayer *AudioPlayerProvider::createUrlAudioPlayer(
     }
 
     SLuint32 locatorType = info.assetFd > 0 ? SL_DATALOCATOR_ANDROIDFD : SL_DATALOCATOR_URI;
-    auto urlPlayer = new (std::nothrow) UrlAudioPlayer(_engineItf, _outputMixObject);
+    auto urlPlayer = new(std::nothrow) UrlAudioPlayer(_engineItf, _outputMixObject);
     bool ret = urlPlayer->prepare(info.url, locatorType, info.assetFd, info.start, info.length);
     if (!ret)
     {
@@ -344,16 +341,28 @@ UrlAudioPlayer *AudioPlayerProvider::createUrlAudioPlayer(
 
 void AudioPlayerProvider::pause()
 {
-//    if (_pcmAudioPlayerPool != nullptr)
-//    {
-//        _pcmAudioPlayerPool->releaseUnusedPlayers();
-//    }
+    if (_audioFlinger != nullptr)
+    {
+        _audioFlinger->pause();
+    }
+
+    if (_pcmAudioService != nullptr)
+    {
+        _pcmAudioService->pause();
+    }
 }
 
 void AudioPlayerProvider::resume()
 {
-//    if (_pcmAudioPlayerPool != nullptr)
-//    {
-//        _pcmAudioPlayerPool->prepareEnoughPlayers();
-//    }
+    if (_audioFlinger != nullptr)
+    {
+        _audioFlinger->resume();
+    }
+
+    if (_pcmAudioService != nullptr)
+    {
+        _pcmAudioService->resume();
+    }
 }
+
+} // namespace cocos2d {

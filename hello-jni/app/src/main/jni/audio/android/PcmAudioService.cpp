@@ -22,14 +22,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-#define LOG_TAG "PcmAudioPlayer"
+#define LOG_TAG "PcmAudioService"
 
 #include "audio/android/PcmAudioService.h"
-#include "audio/android/CCThreadPool.h"
-
-#include <math.h>
+#include "audio/android/AudioFlinger.h"
 #include <unistd.h>
-#include <thread>
+#include <audio/android/cutils/log.h>
+
+namespace cocos2d {
+
+static std::vector<char> __silenceData;
 
 #define AUDIO_PLAYER_BUFFER_COUNT (2)
 
@@ -41,22 +43,15 @@ class SLPcmAudioPlayerCallbackProxy
 public:
     static void samplePlayerCallback(SLAndroidSimpleBufferQueueItf bq, void *context)
     {
-        PcmAudioService * thiz = reinterpret_cast<PcmAudioService *>(context);
+        PcmAudioService *thiz = reinterpret_cast<PcmAudioService *>(context);
         thiz->bqFetchBufferCallback(bq);
     }
 };
 
 PcmAudioService::PcmAudioService(SLEngineItf engineItf, SLObjectItf outputMixObject)
-        : _engineItf(engineItf)
-        , _outputMixObj(outputMixObject)
-        , _playObj(nullptr)
-        , _playItf(nullptr)
-        , _volumeItf(nullptr)
-        , _bufferQueueItf(nullptr)
-        , _numChannels(-1)
-        , _sampleRate(-1)
-        , _bufferSizeInBytes(0)
-        , _mixer(nullptr)
+        : _engineItf(engineItf), _outputMixObj(outputMixObject), _playObj(nullptr),
+          _playItf(nullptr), _volumeItf(nullptr), _bufferQueueItf(nullptr), _numChannels(-1),
+          _sampleRate(-1), _bufferSizeInBytes(0), _flinger(nullptr)
 {
 }
 
@@ -69,16 +64,48 @@ PcmAudioService::~PcmAudioService()
 
 bool PcmAudioService::enqueue()
 {
-//    char* base = _decResult.pcmBuffer->data();
-//    char* data = base + _currentBufferIndex;
-//    int remain = _decResult.pcmBuffer->size() - _currentBufferIndex;
-//    int size = std::min(remain, _bufferSizeInBytes);
-//
-////    LOGD("PcmAudioService (%p, %d) enqueue buffer size: %d, index = %d, totalEnqueueSize: %d", this, getId(), size, _currentBufferIndex, _currentBufferIndex + size);
-//    SLresult  r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, data, size);
-//    SL_RETURN_VAL_IF_FAILED(r, false, "PcmAudioService::enqueue failed");
-//
-//    _currentBufferIndex += size;
+    if (_flinger->hasActiveTracks())
+    {
+        // Don't need to check all buffers
+//        if (_flinger->isAllBuffersFull())
+//        {
+//            LOGD("Yeah, all buffers are full ...");
+//        }
+        bool needWait = false;
+        auto oldTime = clockNow();
+        while (!_flinger->isCurrentBufferFull() && !_flinger->isPaused())
+        {
+            needWait = true;
+            usleep(100);
+        }
+
+        if (needWait)
+        {
+            auto newTime = clockNow();
+            LOGW("PcmAudioService waits mixing %fms", intervalInMS(oldTime, newTime));
+        }
+
+        if (_flinger->isPaused())
+        {
+            SLresult r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, __silenceData.data(), __silenceData.size());
+            SL_RETURN_VAL_IF_FAILED(r, false, "enqueue silent data failed!");
+        }
+        else
+        {
+            LOGD("enqueue buffer ...");
+            auto current = _flinger->current();
+            ALOG_ASSERT(current != nullptr, "current buffer is nullptr ...");
+            SLresult r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, current->buf, current->size);
+            SL_RETURN_VAL_IF_FAILED(r, false, "enqueue failed!");
+
+            _flinger->switchBuffers();
+        }
+    }
+    else
+    {
+        SLresult r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, __silenceData.data(), __silenceData.size());
+        SL_RETURN_VAL_IF_FAILED(r, false, "enqueue silent data failed!");
+    }
 
     return true;
 }
@@ -87,59 +114,12 @@ void PcmAudioService::bqFetchBufferCallback(SLAndroidSimpleBufferQueueItf bq)
 {
     // FIXME: PcmAudioService instance may be destroyed, we need to find a way to wait...
     // It's in sub thread
-//    std::lock_guard<std::mutex> lk(_stateMutex);
-//
-//    if (_state == State::PLAYING)
-//    {
-//        if (_isFirstTimeInBqCallback)
-//        {
-//            _isFirstTimeInBqCallback = false;
-//            auto nowTime = clockNow();
-//            LOGD("PcmAudioService play first buffer wastes: %fms", intervalInMS(_playStartTime, nowTime));
-//        }
-//
-//        bool isPlayOver = false;
-//        bool needSetPlayingState = false;
-//        int pcmDataSize = _decResult.pcmBuffer ? _decResult.pcmBuffer->size() : 0;
-//        SLresult r;
-//        if (_currentBufferIndex >= pcmDataSize)
-//        {
-//            r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
-//            SL_PRINT_ERROR_IF_FAILED(r, "bqFetchBufferCallback, SL_PLAYSTATE_STOPPED failed");
-//            if (_isLoop)
-//            {
-//                _currentBufferIndex = 0;
-//                needSetPlayingState = true;
-//            }
-//            else
-//            {
-//                onPlayOver();
-//                isPlayOver = true;
-//            }
-//        }
-//
-//        if (isPlayOver)
-//        {
-//            setState(State::INITIALIZED);
-//        }
-//        else
-//        {
-//            enqueue();
-//            if (needSetPlayingState)
-//            {
-//                r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
-//                SL_PRINT_ERROR_IF_FAILED(r, "bqFetchBufferCallback, SL_PLAYSTATE_PLAYING failed");
-//            }
-//        }
-//    }
-//    else if (_state == State::INVALID)
-//    {
-//        setState(State::INITIALIZED);
-//    }
+    enqueue();
 }
 
-bool PcmAudioService::init(int numChannels, int sampleRate, int bufferSizeInBytes)
+bool PcmAudioService::init(AudioFlinger* flinger, int numChannels, int sampleRate, int bufferSizeInBytes)
 {
+    _flinger = flinger;
     _numChannels = numChannels;
     _sampleRate = sampleRate;
     _bufferSizeInBytes = bufferSizeInBytes;
@@ -187,7 +167,8 @@ bool PcmAudioService::init(int numChannels, int sampleRate, int bufferSizeInByte
 
     SLresult r;
 
-    r = (*_engineItf)->CreateAudioPlayer(_engineItf, &_playObj, &source, &sink, sizeof(ids) / sizeof(ids[0]), ids, req);
+    r = (*_engineItf)->CreateAudioPlayer(_engineItf, &_playObj, &source, &sink,
+                                         sizeof(ids) / sizeof(ids[0]), ids, req);
     SL_RETURN_VAL_IF_FAILED(r, false, "CreateAudioPlayer failed");
 
     r = (*_playObj)->Realize(_playObj, SL_BOOLEAN_FALSE);
@@ -202,10 +183,35 @@ bool PcmAudioService::init(int numChannels, int sampleRate, int bufferSizeInByte
     r = (*_playObj)->GetInterface(_playObj, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &_bufferQueueItf);
     SL_RETURN_VAL_IF_FAILED(r, false, "GetInterface SL_IID_ANDROIDSIMPLEBUFFERQUEUE failed");
 
-    r = (*_bufferQueueItf)->RegisterCallback(_bufferQueueItf, SLPcmAudioPlayerCallbackProxy::samplePlayerCallback, this);
+    r = (*_bufferQueueItf)->RegisterCallback(_bufferQueueItf,
+                                             SLPcmAudioPlayerCallbackProxy::samplePlayerCallback,
+                                             this);
     SL_RETURN_VAL_IF_FAILED(r, false, "_bufferQueueItf RegisterCallback failed");
+
+    if (__silenceData.empty())
+    {
+        __silenceData.resize(_numChannels * _bufferSizeInBytes, 0x00);
+    }
+
+    r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, __silenceData.data(), __silenceData.size());
+    SL_RETURN_VAL_IF_FAILED(r, false, "_bufferQueueItf Enqueue failed");
+
+    r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+    SL_RETURN_VAL_IF_FAILED(r, false, "SetPlayState failed");
 
     return true;
 }
 
+void PcmAudioService::pause()
+{
+    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PAUSED);
+    SL_RETURN_IF_FAILED(r, "PcmAudioService::pause failed");
+}
 
+void PcmAudioService::resume()
+{
+    SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_PLAYING);
+    SL_RETURN_IF_FAILED(r, "PcmAudioService::resume failed");
+}
+
+} // namespace cocos2d {

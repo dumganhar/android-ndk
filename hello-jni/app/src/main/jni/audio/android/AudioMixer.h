@@ -44,10 +44,10 @@ namespace cocos2d {
 class AudioMixer
 {
 public:
-                            AudioMixer(size_t frameCount, uint32_t sampleRate,
-                                       uint32_t maxNumTracks = MAX_NUM_TRACKS);
+    AudioMixer(size_t frameCount, uint32_t sampleRate,
+               uint32_t maxNumTracks = MAX_NUM_TRACKS);
 
-    /*virtual*/             ~AudioMixer();  // non-virtual saves a v-table, restore if sub-classed
+    /*virtual*/ ~AudioMixer();  // non-virtual saves a v-table, restore if sub-classed
 
 
     // This mixer has a hard-coded upper limit of 32 active track inputs.

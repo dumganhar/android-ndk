@@ -31,24 +31,32 @@ THE SOFTWARE.
 
 #include <unordered_map>
 
-// Manage PcmAudioPlayerPool & UrlAudioPlayer
+namespace cocos2d {
+// Manage PcmAudioPlayer& UrlAudioPlayer
 
+class PcmAudioPlayer;
 class PcmAudioService;
 class UrlAudioPlayer;
-class PcmAudioPlayerPool;
+class AudioFlinger;
 
 class AudioPlayerProvider
 {
 public:
-    AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate, int bufferSizeInFrames, const FdGetterCallback& fdGetterCallback);
+    AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate,
+                        int bufferSizeInFrames, const FdGetterCallback &fdGetterCallback);
+
     virtual ~AudioPlayerProvider();
 
-    IAudioPlayer* getAudioPlayer(const std::string& audioFilePath);
-    PcmData preloadEffect(const std::string& audioFilePath);
-    void clearPcmCache(const std::string& audioFilePath);
+    IAudioPlayer *getAudioPlayer(const std::string &audioFilePath);
+
+    PcmData preloadEffect(const std::string &audioFilePath);
+
+    void clearPcmCache(const std::string &audioFilePath);
+
     void clearAllPcmCaches();
 
     void pause();
+
     void resume();
 
 private:
@@ -60,10 +68,8 @@ private:
         off_t length;
 
         AudioFileInfo()
-        : assetFd(0)
-        , start(0)
-        , length(0)
-        {};
+                : assetFd(0), start(0), length(0)
+        { };
 
         inline bool isValid() const
         {
@@ -71,12 +77,16 @@ private:
         }
     };
 
-    PcmAudioService * obtainPcmAudioPlayer(const std::string& url, const PcmData& pcmData);
-    UrlAudioPlayer* createUrlAudioPlayer(const AudioFileInfo& info);
+    PcmAudioPlayer *obtainPcmAudioPlayer(const std::string &url, const PcmData &pcmData);
 
-    PcmData preloadEffect(const AudioFileInfo& info);
-    AudioFileInfo getFileInfo(const std::string& audioFilePath);
-    bool isSmallFile(const AudioFileInfo& info);
+    UrlAudioPlayer *createUrlAudioPlayer(const AudioFileInfo &info);
+
+    PcmData preloadEffect(const AudioFileInfo &info);
+
+    AudioFileInfo getFileInfo(const std::string &audioFilePath);
+
+    bool isSmallFile(const AudioFileInfo &info);
+
 private:
     SLEngineItf _engineItf;
     SLObjectItf _outputMixObject;
@@ -85,8 +95,10 @@ private:
     FdGetterCallback _fdGetterCallback;
     std::unordered_map<std::string, PcmData> _pcmCache;
 
-    PcmAudioPlayerPool* _pcmAudioPlayerPool;
+    PcmAudioService* _pcmAudioService;
+    AudioFlinger* _audioFlinger;
 };
 
+} //namespace cocos2d {
 
 #endif //COCOS_AUDIOPLAYERPROVIDER_H

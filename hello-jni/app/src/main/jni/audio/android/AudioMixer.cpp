@@ -55,7 +55,7 @@
  * being used. This is a considerable amount of log spam, so don't enable unless you
  * are verifying the hook based code.
  */
-//#define VERY_VERY_VERBOSE_LOGGING
+#define VERY_VERY_VERBOSE_LOGGING // FIXME: cjh comment this
 #ifdef VERY_VERY_VERBOSE_LOGGING
 #define ALOGVV ALOGV
 //define ALOGVV printf  // for test-mixer.cpp
@@ -76,12 +76,12 @@ T max(const T& x, const T& y) {
 
 // Set kUseNewMixer to true to use the new mixer engine always. Otherwise the
 // original code will be used for stereo sinks, the new mixer for multichannel.
-static const bool kUseNewMixer = true;
+static const bool kUseNewMixer = false;
 
 // Set kUseFloat to true to allow floating input into the mixer engine.
 // If kUseNewMixer is false, this is ignored or may be overridden internally
 // because of downmix/upmix support.
-static const bool kUseFloat = true;
+static const bool kUseFloat = false;
 
 // Set to default copy buffer size in frames for input processing.
 static const size_t kCopyBufferFrameCount = 256;
@@ -105,6 +105,7 @@ AudioMixer::AudioMixer(size_t frameCount, uint32_t sampleRate, uint32_t maxNumTr
     :   mTrackNames(0), mConfiguredNames((maxNumTracks >= 32 ? 0 : 1 << maxNumTracks) - 1),
         mSampleRate(sampleRate)
 {
+    ALOGVV("AudioMixer constructed, frameCount: %d, sampleRate: %d", (int)frameCount, (int)sampleRate);
     ALOG_ASSERT(maxNumTracks <= MAX_NUM_TRACKS, "maxNumTracks %u > MAX_NUM_TRACKS %u",
             maxNumTracks, MAX_NUM_TRACKS);
 
@@ -230,6 +231,7 @@ int AudioMixer::getTrackName(audio_channel_mask_t channelMask,
         t->mMixerChannelMask = audio_channel_mask_from_representation_and_bits(
                 AUDIO_CHANNEL_REPRESENTATION_POSITION, AUDIO_CHANNEL_OUT_STEREO);
         t->mMixerChannelCount = audio_channel_count_from_out_mask(t->mMixerChannelMask);
+        ALOGVV("t->mMixerChannelCount: %d", t->mMixerChannelCount);
         t->mPlaybackRate = AUDIO_PLAYBACK_RATE_DEFAULT;
         // Check the downmixing (or upmixing) requirements.
         status_t status = t->prepareForDownmix();
@@ -241,6 +243,7 @@ int AudioMixer::getTrackName(audio_channel_mask_t channelMask,
         ALOGVV("mMixerFormat:%#x  mMixerInFormat:%#x\n", t->mMixerFormat, t->mMixerInFormat);
         t->prepareForReformat();
         mTrackNames |= 1 << n;
+        ALOGVV("getTrackName return: %d", TRACK0 + n);
         return TRACK0 + n;
     }
     ALOGE("AudioMixer::getTrackName out of available tracks");
@@ -261,9 +264,10 @@ void AudioMixer::invalidateState(uint32_t mask)
 bool AudioMixer::setChannelMasks(int name,
         audio_channel_mask_t trackChannelMask, audio_channel_mask_t mixerChannelMask) {
     track_t &track = mState.tracks[name];
-
+    ALOGVV("AudioMixer::setChannelMask ...");
     if (trackChannelMask == track.channelMask
             && mixerChannelMask == track.mMixerChannelMask) {
+        ALOGVV("No need to change channel mask ...");
         return false;  // no need to change
     }
     // always recompute for both channel masks even if only one has changed.
@@ -406,6 +410,7 @@ status_t AudioMixer::track_t::prepareForReformat()
     if (requiresReconfigure) {
         reconfigureBufferProviders();
     }
+    ALOGVV("prepareForReformat return ...");
     return NO_ERROR;
 }
 

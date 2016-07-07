@@ -416,7 +416,8 @@ void AudioDecoder::resample()
     LOGD("Resample: %d --> %d", _result.sampleRate, _sampleRate);
 
     auto r = _result;
-    PcmBufferProvider provider(r.pcmBuffer->data(), r.numFrames, r.pcmBuffer->size() / r.numFrames);
+    PcmBufferProvider provider;
+    provider.init(r.pcmBuffer->data(), r.numFrames, r.pcmBuffer->size() / r.numFrames);
 
     const int outFrameRate = _sampleRate;
     int outputChannels = 2;

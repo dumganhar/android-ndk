@@ -6,18 +6,27 @@
 
 #include "PcmAudioPlayer.h"
 #include "OpenSLHelper.h"
+#include "AudioFlinger.h"
 
-PcmAudioPlayer::PcmAudioPlayer()
+namespace cocos2d {
+
+PcmAudioPlayer::PcmAudioPlayer(AudioFlinger* flinger)
         : _id(-1)
         , _volume(0.0f)
         , _isLoop(false)
         , _state(State::INVALID)
+        , _track(nullptr)
         , _playEventCallback(nullptr)
+        , _audioFlinger(flinger)
 {
-
 }
 
-bool PcmAudioPlayer::prepare(const std::string& url, const PcmData &decResult)
+PcmAudioPlayer::~PcmAudioPlayer()
+{
+    SL_SAFE_DELETE(_track);
+}
+
+bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
 {
     std::lock_guard<std::mutex> lk(_stateMutex);
     if (_state == State::PLAYING)
@@ -31,6 +40,11 @@ bool PcmAudioPlayer::prepare(const std::string& url, const PcmData &decResult)
         _decResult = decResult;
 
         setVolume(1.0f);
+
+        _track = new Track(_decResult);
+        _track->onDestroy = [this](){
+            delete this;
+        };
     }
 
     return true;
@@ -85,18 +99,30 @@ void PcmAudioPlayer::setState(State state)
     _state = state;
 }
 
-void PcmAudioPlayer::play() {
-
+void PcmAudioPlayer::play()
+{
+    // put track to AudioFlinger
+    LOGD("PcmAudioPlayer (%p) play ...", this);
+    _audioFlinger->addTrack(_track);
 }
 
-void PcmAudioPlayer::pause() {
-
+void PcmAudioPlayer::pause()
+{
+    LOGD("PcmAudioPlayer (%p) pause ...", this);
+    _track->setState(Track::State::PAUSED);
 }
 
-void PcmAudioPlayer::resume() {
-
+void PcmAudioPlayer::resume()
+{
+    LOGD("PcmAudioPlayer (%p) resume ...", this);
+    _track->setState(Track::State::RESUMED);
 }
 
-void PcmAudioPlayer::stop() {
-
+void PcmAudioPlayer::stop()
+{
+    LOGD("PcmAudioPlayer (%p) stop ...", this);
+    _track->setState(Track::State::STOPPED);
 }
+
+
+} // namespace cocos2d {

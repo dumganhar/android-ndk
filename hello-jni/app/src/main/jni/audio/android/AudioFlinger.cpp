@@ -2,311 +2,85 @@
 // Created by James Chen on 7/5/16.
 //
 
+#define LOG_TAG "AudioFlinger"
 
 #include "AudioFlinger.h"
-#include "SourceAudioBufferProvider.h"
-#include "PcmSource.h"
-#include "PcmSink.h"
 
-#include <linux/futex.h>
-#include <asm/unistd.h>
-#include <sys/syscall.h>
 #include <algorithm>
+#include <audio/android/cutils/log.h>
+#include "audio/android/AudioMixer.h"
+#include "audio/android/Track.h"
+#include "OpenSLHelper.h"
 
 namespace cocos2d {
 
-AudioFlinger::AudioFlinger()
-: mFastTrackAvailMask(((1 << FastMixerState::kMaxFastTracks) - 1) & ~1) // index 0 is reserved for normal mixer's submix
+AudioFlinger::AudioFlinger(int bufferSizeInFrames, int sampleRate, int channelCount)
+        : _bufferSizeInFrames(bufferSizeInFrames)
+        , _sampleRate(sampleRate)
+        , _channelCount(channelCount)
+        , _mixingThread(nullptr)
+        , _mixer(nullptr)
+        , _isDestroy(false)
+        , _isPaused(false)
 {
+    for (int i = 0; i < sizeof(_buffers) / sizeof(_buffers[0]); ++i)
+    {
+        _buffers[i].size = (size_t) bufferSizeInFrames * 2 * channelCount;
+        posix_memalign(&_buffers[i].buf, 32, _buffers[i].size);
+        memset(_buffers[i].buf, 0, _buffers[i].size);
+        _buffers[i].state = BufferState::EMPTY;
+    }
 
+    _busy = &_buffers[0];
+    _current = &_buffers[1];
+    _next = &_buffers[2];
+    _mixing = nullptr;
 }
 
 AudioFlinger::~AudioFlinger()
 {
-    if (mFastMixer != 0) {
-        FastMixerStateQueue *sq = mFastMixer->sq();
-        FastMixerState *state = sq->begin();
-        if (state->mCommand == FastMixerState::COLD_IDLE) {
-            int32_t old = android_atomic_inc(&mFastMixerFutex);
-            if (old == -1) {
-                (void) syscall(__NR_futex, &mFastMixerFutex, FUTEX_WAKE_PRIVATE, 1);
-            }
-        }
-        state->mCommand = FastMixerState::EXIT;
-        sq->end();
-        sq->push(FastMixerStateQueue::BLOCK_UNTIL_PUSHED);
-        mFastMixer->join();
-        // Though the fast mixer thread has exited, it's state queue is still valid.
-        // We'll use that extract the final state which contains one remaining fast track
-        // corresponding to our sub-mix.
-        state = sq->begin();
-        ALOG_ASSERT(state->mTrackMask == 1);
-        FastTrack *fastTrack = &state->mFastTracks[0];
-        ALOG_ASSERT(fastTrack->mBufferProvider != NULL);
-        delete fastTrack->mBufferProvider;
-        sq->end(false /*didModify*/);
-        delete mFastMixer;
-#ifdef AUDIO_WATCHDOG
-        if (mAudioWatchdog != 0) {
-            mAudioWatchdog->requestExit();
-            mAudioWatchdog->requestExitAndWait();
-            mAudioWatchdog.clear();
-        }
-#endif
+    destroy();
+    if (_mixingThread != nullptr)
+    {
+        _mixingThread->join();
+        delete _mixingThread;
+        _mixingThread = nullptr;
+    }
+
+    if (_mixer != nullptr)
+    {
+        delete _mixer;
+        _mixer = nullptr;
+    }
+
+    for (int i = 0; i < sizeof(_buffers) / sizeof(_buffers[0]); ++i)
+    {
+        free(_buffers[i].buf);
     }
 }
 
-bool AudioFlinger::init(const NBAIO_Format& format)
+bool AudioFlinger::init()
 {
-    // create an NBAIO sink for the HAL output stream, and negotiate
-    mOutputSink = std::make_shared<PcmSink>();
-
-    // create fast mixer and configure it initially with just one fast track for our submix
-    mFastMixer = new FastMixer();
-    FastMixerStateQueue *sq = mFastMixer->sq();
-#ifdef STATE_QUEUE_DUMP
-    sq->setObserverDump(&mStateQueueObserverDump);
-        sq->setMutatorDump(&mStateQueueMutatorDump);
-#endif
-    FastMixerState *state = sq->begin();
-    FastTrack *fastTrack = &state->mFastTracks[0];
-    // wrap the source side of the MonoPipe to make it an AudioBufferProvider
-    auto source = std::make_shared<PcmSource>(format);
-    fastTrack->mBufferProvider = new SourceAudioBufferProvider(source);
-    fastTrack->mVolumeProvider = NULL;
-    fastTrack->mChannelMask = mChannelMask; // mPipeSink channel mask for audio to FastMixer
-    fastTrack->mFormat = mFormat; // mPipeSink format for audio to FastMixer
-    fastTrack->mGeneration++;
-    state->mFastTracksGen++;
-    state->mTrackMask = 1;
-    // fast mixer will use the HAL output sink
-    state->mOutputSink = mOutputSink.get();
-    state->mOutputSinkGen++;
-    state->mFrameCount = mFrameCount;
-    state->mCommand = FastMixerState::COLD_IDLE;
-    // already done in constructor initialization list
-    //mFastMixerFutex = 0;
-    state->mColdFutexAddr = &mFastMixerFutex;
-    state->mColdGen++;
-    state->mDumpState = &mFastMixerDumpState;
-#ifdef TEE_SINK
-    state->mTeeSink = mTeeSink.get();
-#endif
-//cjh    mFastMixerNBLogWriter = audioFlinger->newWriter_l(kFastMixerLogSize, "FastMixer");
-//    state->mNBLogWriter = mFastMixerNBLogWriter.get();
-    sq->end();
-    sq->push(FastMixerStateQueue::BLOCK_UNTIL_PUSHED);
-
-    // start the fast mixer
-    mFastMixer->run();
-//    pid_t tid = mFastMixer->getTid();
-//    sendPrioConfigEvent(getpid_cached, tid, kPriorityFastMixer);
-
+    _mixer = new (std::nothrow) AudioMixer(_bufferSizeInFrames, _sampleRate);
+    _mixingThread = new (std::nothrow) std::thread(&AudioFlinger::mixingThreadLoop, this);
     return true;
 }
 
-AudioFlinger::mixer_state AudioFlinger::prepareTracks(std::vector<Track*>* tracksToRemove)
+bool AudioFlinger::addTrack(Track* track)
 {
-    mixer_state mixerStatus = MIXER_IDLE;
-    size_t count = mActiveTracks.size();
+    bool ret = false;
 
-    uint32_t resetMask = 0; // bit mask of fast tracks that need to be reset
+    std::lock_guard<std::mutex> lk(_activeTracksMutex);
 
-    // prepare a new state to push
-    FastMixerStateQueue *sq = NULL;
-    FastMixerState *state = NULL;
-    bool didModify = false;
-    FastMixerStateQueue::block_t block = FastMixerStateQueue::BLOCK_UNTIL_PUSHED;
-    if (mFastMixer != 0) {
-        sq = mFastMixer->sq();
-        state = sq->begin();
-    }
-
-    for (size_t i=0 ; i<count ; i++) {
-        Track* t = mActiveTracks[i];
-        if (t == nullptr) {
-            continue;
-        }
-
-        // this const just means the local variable doesn't change
-        Track* track = t;
-
-        // process fast tracks
-        if (track->isFastTrack()) {
-
-            // It's theoretically possible (though unlikely) for a fast track to be created
-            // and then removed within the same normal mix cycle.  This is not a problem, as
-            // the track never becomes active so it's fast mixer slot is never touched.
-            // The converse, of removing an (active) track and then creating a new track
-            // at the identical fast mixer slot within the same normal mix cycle,
-            // is impossible because the slot isn't marked available until the end of each cycle.
-            int j = track->mFastIndex;
-            ALOG_ASSERT(0 < j && j < (int)FastMixerState::kMaxFastTracks);
-            ALOG_ASSERT(!(mFastTrackAvailMask & (1 << j)));
-            FastTrack *fastTrack = &state->mFastTracks[j];
-
-            // Determine whether the track is currently in underrun condition,
-            // and whether it had a recent underrun.
-            FastTrackDump *ftDump = &mFastMixerDumpState.mTracks[j];
-            FastTrackUnderruns underruns = ftDump->mUnderruns;
-            uint32_t recentFull = 1;
-            uint32_t recentPartial = 0;
-            uint32_t recentEmpty = 0;
-
-            uint32_t recentUnderruns = recentPartial + recentEmpty;
-
-            // This is similar to the state machine for normal tracks,
-            // with a few modifications for fast tracks.
-            bool isActive = true;
-            switch (track->mState) {
-                case Track::STOPPING_1:
-                    // track stays active in STOPPING_1 state until first underrun
-                    if (recentUnderruns > 0 || track->isTerminated()) {
-                        track->mState = Track::STOPPING_2;
-                    }
-                    break;
-                case Track::PAUSING:
-                    // ramp down is not yet implemented
-                    track->setPaused();
-                    break;
-                case Track::RESUMING:
-                    // ramp up is not yet implemented
-                    track->mState = Track::ACTIVE;
-                    break;
-                case Track::ACTIVE:
-                    if (recentUnderruns == 0) {
-                        // no recent underruns: stay active
-                        break;
-                    }
-                    // fall through
-                case Track::STOPPING_2:
-                case Track::PAUSED:
-                case Track::STOPPED:
-                case Track::FLUSHED:   // flush() while active
-                    // Check for presentation complete if track is inactive
-                    // We have consumed all the buffers of this track.
-                    // This would be incomplete if we auto-paused on underrun
-                {
-
-                }
-                    if (track->isStopping_2()) {
-                        track->mState = Track::STOPPED;
-                    }
-                    if (track->isStopped()) {
-                        // Can't reset directly, as fast mixer is still polling this track
-                        //   track->reset();
-                        // So instead mark this track as needing to be reset after push with ack
-                        resetMask |= 1 << i;
-                    }
-                    isActive = false;
-                    break;
-                case Track::IDLE:
-                default:
-                    LOG_ALWAYS_FATAL("unexpected track state %d", track->mState);
-            }
-
-            if (isActive) {
-                // was it previously inactive?
-                if (!(state->mTrackMask & (1 << j))) {
-                    ExtendedAudioBufferProvider *eabp = track;
-                    VolumeProvider *vp = track;
-                    fastTrack->mBufferProvider = eabp;
-                    fastTrack->mVolumeProvider = vp;
-                    fastTrack->mChannelMask = track->mChannelMask;
-                    fastTrack->mFormat = track->mFormat;
-                    fastTrack->mGeneration++;
-                    state->mTrackMask |= 1 << j;
-                    didModify = true;
-                    // no acknowledgement required for newly active tracks
-                }
-            } else {
-                // was it previously active?
-                if (state->mTrackMask & (1 << j)) {
-                    fastTrack->mBufferProvider = NULL;
-                    fastTrack->mGeneration++;
-                    state->mTrackMask &= ~(1 << j);
-                    didModify = true;
-                    // If any fast tracks were removed, we must wait for acknowledgement
-                    // because we're about to decrement the last sp<> on those tracks.
-                    block = FastMixerStateQueue::BLOCK_UNTIL_ACKED;
-                } else {
-                    LOG_ALWAYS_FATAL("fast track %d should have been active", j);
-                }
-                tracksToRemove->push_back(track);
-            }
-            continue;
-        }
-
-
-        track_is_ready: ;
-
-    }
-
-    // Push the new FastMixer state if necessary
-    bool pauseAudioWatchdog = false;
-    if (didModify) {
-        state->mFastTracksGen++;
-        // if the fast mixer was active, but now there are no fast tracks, then put it in cold idle
-//cjh        if (kUseFastMixer == FastMixer_Dynamic &&
-//            state->mCommand == FastMixerState::MIX_WRITE && state->mTrackMask <= 1) {
-//            state->mCommand = FastMixerState::COLD_IDLE;
-//            state->mColdFutexAddr = &mFastMixerFutex;
-//            state->mColdGen++;
-//            mFastMixerFutex = 0;
-//            // If we go into cold idle, need to wait for acknowledgement
-//            // so that fast mixer stops doing I/O.
-//            block = FastMixerStateQueue::BLOCK_UNTIL_ACKED;
-//            pauseAudioWatchdog = true;
-//        }
-    }
-    if (sq != NULL) {
-        sq->end(didModify);
-        sq->push(block);
-    }
-#ifdef AUDIO_WATCHDOG
-    if (pauseAudioWatchdog && mAudioWatchdog != 0) {
-        mAudioWatchdog->pause();
-    }
-#endif
-
-    // Now perform the deferred reset on fast tracks that have stopped
-    while (resetMask != 0) {
-        size_t i = __builtin_ctz(resetMask);
-        ALOG_ASSERT(i < count);
-        resetMask &= ~(1 << i);
-        Track* t = mActiveTracks[i];
-        if (t == nullptr) {
-            continue;
-        }
-        Track* track = t;
-        ALOG_ASSERT(track->isFastTrack() && track->isStopped());
-        track->reset();
-    }
-
-    // remove all the tracks that need to be...
-    removeTracks(*tracksToRemove);
-
-    return mixerStatus;
-}
-
-status_t AudioFlinger::addTrack(Track* track)
-{
-    status_t status = ALREADY_EXISTS;
-
-    auto iter = std::find(mActiveTracks.begin(), mActiveTracks.end(), track);
-    if (iter == mActiveTracks.end())
+    auto iter = std::find(_activeTracks.begin(), _activeTracks.end(), track);
+    if (iter == _activeTracks.end())
     {
-        mActiveTracks.push_back(track);
-        mWakeLockUids.push_back(track->uid());
-        mActiveTracksGeneration++;
-        mLatestActiveTrack = track;
-
-        status = NO_ERROR;
+        _activeTracks.push_back(track);
+        _mixingCondition.notify_one();
+        ret = true;
     }
 
-//cjh    onAddNewTrack_l();
-
-    return status;
+    return ret;
 }
 
 template <typename T>
@@ -319,36 +93,238 @@ static void removeItemFromVector(std::vector<T>& v, T item)
     }
 }
 
-// removeTracks_l() must be called with ThreadBase::mLock held
-void AudioFlinger::removeTracks(const std::vector<Track*>& tracksToRemove)
+void AudioFlinger::mixingThreadLoop()
 {
-    size_t count = tracksToRemove.size();
-    if (count > 0)
+    auto doWait = [this](){
+        std::unique_lock<std::mutex> lk(_mixingMutex);
+        _switchMutex.unlock();
+        _activeTracksMutex.unlock();
+
+        _mixingCondition.wait(lk);
+
+        _switchMutex.lock();
+        _activeTracksMutex.lock();
+    };
+
+    for (;;)
     {
-        for (size_t i=0 ; i<count ; i++) {
-            Track* track = tracksToRemove.at(i);
-            removeItemFromVector(mActiveTracks, track);
-            removeItemFromVector(mWakeLockUids, track->uid());
-            mActiveTracksGeneration++;
-            ALOGV("removeTracks_l removing track");
-            if (track->isTerminated()) {
-                removeTrack(track);
+        LOGD("AudioFlinger::mixingThreadLoop()");
+
+
+        _switchMutex.lock();
+        _activeTracksMutex.lock();
+
+        if (_isPaused)
+        {
+            doWait();
+        }
+
+        if (_activeTracks.empty() || (_current->state == BufferState::FULL && _next->state == BufferState::FULL))
+        {
+            doWait();
+        }
+
+        if (_isDestroy)
+        {
+            _switchMutex.unlock();
+            _activeTracksMutex.unlock();
+            _isDestroy = false;
+            return;
+        }
+
+        if (_current->state == BufferState ::EMPTY)
+        {
+            _mixing = _current;
+        }
+        else if (_next->state == BufferState::EMPTY)
+        {
+            _mixing = _next;
+        }
+        _switchMutex.unlock();
+
+        float f = AudioMixer::UNITY_GAIN_FLOAT;// / _activeTracks.size(); // normalize volume by # tracks // FIXME: do paused tracks need to be considered?
+
+        std::vector<Track*> tracksToRemove;
+        tracksToRemove.reserve(_activeTracks.size());
+
+        // FOR TESTING BEGIN
+//        Track* track = _activeTracks[0];
+//
+//        AudioBufferProvider::Buffer buffer;
+//        buffer.frameCount = _bufferSizeInFrames;
+//        status_t r = track->getNextBuffer(&buffer);
+////        ALOG_ASSERT(buffer.frameCount == _mixing->size / 2, "buffer.frameCount:%d, _mixing->size/2:%d", buffer.frameCount, _mixing->size/2);
+//        if (r == NO_ERROR)
+//        {
+//            LOGD("getNextBuffer succeed ...");
+//            memcpy(_mixing->buf, buffer.raw, _mixing->size);
+//        }
+//        if (buffer.raw == nullptr)
+//        {
+//            LOGD("Play over ...");
+//            tracksToRemove.push_back(track);
+//        }
+//        else
+//        {
+//            track->releaseBuffer(&buffer);
+//        }
+//
+//        _mixing->state = BufferState::FULL;
+//        _activeTracksMutex.unlock();
+        // FOR TESTING END
+
+        Track::State state;
+        // set up the tracks.
+        for (Track* track : _activeTracks)
+        {
+            state = track->getState();
+
+            if (state == Track::State::IDLE)
+            {
+                uint32_t channelMask = audio_channel_out_mask_from_count(2);
+                int32_t name = _mixer->getTrackName(channelMask, AUDIO_FORMAT_PCM_16_BIT,
+                                                    AUDIO_SESSION_OUTPUT_MIX);
+                ALOG_ASSERT(name >= 0);
+
+                _mixer->setBufferProvider(name, track);
+                _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER, _mixing->buf);
+                _mixer->setParameter(
+                        name,
+                        AudioMixer::TRACK,
+                        AudioMixer::MIXER_FORMAT,
+                        (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
+                _mixer->setParameter(
+                        name,
+                        AudioMixer::TRACK,
+                        AudioMixer::FORMAT,
+                        (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
+                _mixer->setParameter(
+                        name,
+                        AudioMixer::TRACK,
+                        AudioMixer::MIXER_CHANNEL_MASK,
+                        (void *) (uintptr_t) channelMask);
+                _mixer->setParameter(
+                        name,
+                        AudioMixer::TRACK,
+                        AudioMixer::CHANNEL_MASK,
+                        (void *) (uintptr_t) channelMask);
+
+                _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &f);
+                _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &f);
+                _mixer->enable(name);
+
+                track->setState(Track::State::PLAYING);
+                track->setName(name);
+            }
+            else
+            {
+                ALOG_ASSERT(track->getName() >= 0);
+
+                if (state == Track::State::PLAYING)
+                {
+                    _mixer->setParameter(track->getName(), AudioMixer::TRACK, AudioMixer::MAIN_BUFFER, _mixing->buf);
+                }
+                else if (state == Track::State::RESUMED)
+                {
+                    _mixer->enable(track->getName());
+                    track->setState(Track::State::PLAYING);
+                }
+                else if (state == Track::State::PAUSED)
+                {
+                    _mixer->disable(track->getName());
+                }
+                else if (state == Track::State::STOPPED)
+                {
+                    _mixer->deleteTrackName(track->getName());
+                    tracksToRemove.push_back(track);
+                }
+
+                if (track->isPlayOver())
+                {
+                    LOGD("Play over ...");
+                    _mixer->deleteTrackName(track->getName());
+                    tracksToRemove.push_back(track);
+                }
             }
         }
+
+        bool hasAvailableTracks = _activeTracks.size() - tracksToRemove.size() > 0;
+        _activeTracksMutex.unlock();
+
+        if (hasAvailableTracks)
+        {
+            LOGD("active tracks: %d", (int) _activeTracks.size());
+            _mixer->process(AudioBufferProvider::kInvalidPTS);
+            _mixing->state = BufferState::FULL;
+            LOGD("mixer process end");
+        }
+        else
+        {
+            LOGD("Doesn't have enough tracks: %d, %d", (int) _activeTracks.size(), (int) tracksToRemove.size());
+        }
+
+        _activeTracksMutex.lock();
+
+        // Remove stopped or playover tracks for active tracks container
+        for (Track* track : tracksToRemove)
+        {
+            removeItemFromVector(_activeTracks, track);
+            track->onDestroy();
+        }
+
+        _activeTracksMutex.unlock();
     }
 }
 
-void AudioFlinger::removeTrack(Track* track)
+void AudioFlinger::switchBuffers()
 {
-    if (track->isFastTrack()) {
-        int index = track->mFastIndex;
-        ALOG_ASSERT(0 < index && index < (int)FastMixerState::kMaxFastTracks);
-        ALOG_ASSERT(!(mFastTrackAvailMask & (1 << index)));
-        mFastTrackAvailMask |= 1 << index;
-        // redundant as track is about to be destroyed, for dumpsys only
-        track->mFastIndex = -1;
+    LOGD("AudioFlinger::switchBuffers ...");
+    _switchMutex.lock();
+    OutputBuffer* tmp = _busy;
+    _busy = _current; _busy->state = BufferState::BUSY;
+    _current = _next; // Don't change new current state
+    _next = tmp; _next->state = BufferState::EMPTY;
+    _switchMutex.unlock();
+
+    _mixingCondition.notify_one();
+}
+
+void AudioFlinger::destroy()
+{
+    _isDestroy = true;
+    while(_isDestroy)
+    {
+        _mixingCondition.notify_one();
+        usleep(100);
     }
 }
 
+bool AudioFlinger::isCurrentBufferFull()
+{
+    std::lock_guard<std::mutex> lk(_switchMutex);
+    return _current->state == BufferState::FULL;
+}
 
+bool AudioFlinger::hasActiveTracks()
+{
+    std::lock_guard<std::mutex> lk(_activeTracksMutex);
+    return !_activeTracks.empty();
+}
+
+void AudioFlinger::pause()
+{
+    _isPaused = true;
+}
+
+void AudioFlinger::resume()
+{
+    _isPaused = false;
+    _mixingCondition.notify_one();
+}
+
+bool AudioFlinger::isAllBuffersFull()
+{
+    std::lock_guard<std::mutex> lk(_switchMutex);
+    return _current->state == BufferState::FULL && _next->state == BufferState::FULL ;
+}
 } // namespace cocos2d

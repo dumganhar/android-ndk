@@ -30,31 +30,23 @@ THE SOFTWARE.
 #include <unistd.h>
 #include <algorithm> // for std::find
 
-static std::vector<UrlAudioPlayer*> __stoppedPlayers;
-static std::vector<UrlAudioPlayer*> __playOverPlayers;
-static std::vector<UrlAudioPlayer*> __allPlayers;
+namespace cocos2d {
+
+static std::vector<UrlAudioPlayer *> __stoppedPlayers;
+static std::vector<UrlAudioPlayer *> __playOverPlayers;
+static std::vector<UrlAudioPlayer *> __allPlayers;
 
 static std::mutex __playOverMutex;
 static std::once_flag __onceFlag;
 static int __instanceCount = 0;
 
 UrlAudioPlayer::UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject)
-        : _engineItf(engineItf)
-        , _outputMixObj(outputMixObject)
-        , _id(-1)
-        , _assetFd(0)
-        , _playObj(nullptr)
-        , _playItf(nullptr)
-        , _seekItf(nullptr)
-        , _volumeItf(nullptr)
-        , _volume(0.0f)
-        , _isLoop(false)
-        , _duration(0.0f)
-        , _state(State::INVALID)
-        , _isDestroyed(false)
-        , _playEventCallback(nullptr)
+        : _engineItf(engineItf), _outputMixObj(outputMixObject), _id(-1), _assetFd(0),
+          _playObj(nullptr), _playItf(nullptr), _seekItf(nullptr), _volumeItf(nullptr),
+          _volume(0.0f), _isLoop(false), _duration(0.0f), _state(State::INVALID),
+          _isDestroyed(false), _playEventCallback(nullptr)
 {
-    std::call_once(__onceFlag, [](){
+    std::call_once(__onceFlag, []() {
         LOGD("Initializing static variables in UrlAudioPlayer ...");
         __stoppedPlayers.reserve(16);
         __playOverPlayers.reserve(16);
@@ -76,11 +68,12 @@ UrlAudioPlayer::~UrlAudioPlayer()
     }
 }
 
-class SLUrlAudioPlayerCallbackProxy {
+class SLUrlAudioPlayerCallbackProxy
+{
 public:
     static void playEventCallback(SLPlayItf caller, void *context, SLuint32 playEvent)
     {
-        UrlAudioPlayer* thiz = (UrlAudioPlayer*) context;
+        UrlAudioPlayer *thiz = (UrlAudioPlayer *) context;
         thiz->playEventCallback(caller, playEvent);
     }
 };
@@ -111,7 +104,7 @@ void UrlAudioPlayer::playEventCallback(SLPlayItf caller, SLuint32 playEvent)
     }
 }
 
-void UrlAudioPlayer::setPlayEventCallback(const PlayEventCallback& playEventCallback)
+void UrlAudioPlayer::setPlayEventCallback(const PlayEventCallback &playEventCallback)
 {
     _playEventCallback = playEventCallback;
 }
@@ -170,7 +163,8 @@ void UrlAudioPlayer::setVolume(float volume)
 {
     _volume = volume;
     int dbVolume = 2000 * log10(volume);
-    if(dbVolume < SL_MILLIBEL_MIN){
+    if (dbVolume < SL_MILLIBEL_MIN)
+    {
         dbVolume = SL_MILLIBEL_MIN;
     }
     SLresult r = (*_volumeItf)->SetVolumeLevel(_volumeItf, dbVolume);
@@ -189,7 +183,7 @@ float UrlAudioPlayer::getDuration() const
     }
     else
     {
-        const_cast<UrlAudioPlayer*>(this)->_duration = duration / 1000.0f;
+        const_cast<UrlAudioPlayer *>(this)->_duration = duration / 1000.0f;
 
         if (_duration <= 0)
         {
@@ -215,12 +209,14 @@ bool UrlAudioPlayer::setPosition(float pos)
     return true;
 }
 
-bool UrlAudioPlayer::prepare(const std::string& url, SLuint32 locatorType, int assetFd, int start, int length)
+bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, int assetFd, int start,
+                             int length)
 {
     _url = url;
     _assetFd = assetFd;
 
-    LOGD("UrlAudioPlayer::prepare: %s, %u, %d, %d, %d", _url.c_str(), locatorType, assetFd, start, length);
+    LOGD("UrlAudioPlayer::prepare: %s, %u, %d, %d, %d", _url.c_str(), locatorType, assetFd, start,
+         length);
     SLDataSource audioSrc;
 
     SLDataFormat_MIME formatMime = {SL_DATAFORMAT_MIME, nullptr, SL_CONTAINERTYPE_UNSPECIFIED};
@@ -260,7 +256,8 @@ bool UrlAudioPlayer::prepare(const std::string& url, SLuint32 locatorType, int a
     const SLInterfaceID ids[3] = {SL_IID_SEEK, SL_IID_PREFETCHSTATUS, SL_IID_VOLUME};
     const SLboolean req[3] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
 
-    SLresult result = (*_engineItf)->CreateAudioPlayer(_engineItf, &_playObj, &audioSrc, &audioSnk, 3, ids, req);
+    SLresult result = (*_engineItf)->CreateAudioPlayer(_engineItf, &_playObj, &audioSrc, &audioSnk,
+                                                       3, ids, req);
     SL_RETURN_VAL_IF_FAILED(result, false, "CreateAudioPlayer failed");
 
     // realize the player
@@ -279,7 +276,8 @@ bool UrlAudioPlayer::prepare(const std::string& url, SLuint32 locatorType, int a
     result = (*_playObj)->GetInterface(_playObj, SL_IID_VOLUME, &_volumeItf);
     SL_RETURN_VAL_IF_FAILED(result, false, "GetInterface SL_IID_VOLUME failed");
 
-    result = (*_playItf)->RegisterCallback(_playItf, SLUrlAudioPlayerCallbackProxy::playEventCallback, this);
+    result = (*_playItf)->RegisterCallback(_playItf,
+                                           SLUrlAudioPlayerCallbackProxy::playEventCallback, this);
     SL_RETURN_VAL_IF_FAILED(result, false, "RegisterCallback failed");
 
     result = (*_playItf)->SetCallbackEventsMask(_playItf, SL_PLAYEVENT_HEADATEND);
@@ -335,7 +333,8 @@ void UrlAudioPlayer::update()
     if (!__stoppedPlayers.empty())
     {
         LOGD("UrlAudioPlayer::update, clear stopped players!");
-        for (auto player : __stoppedPlayers) {
+        for (auto player : __stoppedPlayers)
+        {
             delete player;
         }
         __stoppedPlayers.clear();
@@ -358,10 +357,13 @@ void UrlAudioPlayer::destroy()
         _isDestroyed = true;
         SL_DESTROY_OBJ(_playObj);
 
-        if (_assetFd > 0) {
+        if (_assetFd > 0)
+        {
             ::close(_assetFd);
             _assetFd = 0;
         }
         LOGD("UrlAudioPlayer::destroy end");
     }
 }
+
+} // namespace cocos2d {
