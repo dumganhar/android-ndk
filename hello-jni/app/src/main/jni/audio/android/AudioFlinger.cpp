@@ -4,15 +4,17 @@
 
 #define LOG_TAG "AudioFlinger"
 
-#include "AudioFlinger.h"
+#include "audio/android/AudioFlinger.h"
 
 #include <algorithm>
 #include <audio/android/cutils/log.h>
 #include "audio/android/AudioMixer.h"
 #include "audio/android/Track.h"
-#include "OpenSLHelper.h"
+#include "audio/android/OpenSLHelper.h"
 
 namespace cocos2d {
+
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
 
 AudioFlinger::AudioFlinger(int bufferSizeInFrames, int sampleRate, int channelCount)
         : _bufferSizeInFrames(bufferSizeInFrames)
@@ -23,7 +25,7 @@ AudioFlinger::AudioFlinger(int bufferSizeInFrames, int sampleRate, int channelCo
         , _isDestroy(false)
         , _isPaused(false)
 {
-    for (int i = 0; i < sizeof(_buffers) / sizeof(_buffers[0]); ++i)
+    for (int i = 0; i < ARRAY_SIZE(_buffers); ++i)
     {
         _buffers[i].size = (size_t) bufferSizeInFrames * 2 * channelCount;
         posix_memalign(&_buffers[i].buf, 32, _buffers[i].size);
@@ -34,6 +36,7 @@ AudioFlinger::AudioFlinger(int bufferSizeInFrames, int sampleRate, int channelCo
     _busy = &_buffers[0];
     _current = &_buffers[1];
     _next = &_buffers[2];
+    _afterNext = &_buffers[3];
     _mixing = nullptr;
 }
 
@@ -119,8 +122,14 @@ void AudioFlinger::mixingThreadLoop()
             doWait();
         }
 
-        if (_activeTracks.empty() || (_current->state == BufferState::FULL && _next->state == BufferState::FULL))
+        if (_activeTracks.empty())
         {
+            doWait();
+        }
+
+        if  (_current->state == BufferState::FULL && _next->state == BufferState::FULL && _afterNext->state == BufferState::FULL)
+        {
+            LOGD("Yeah, all buffers are full, waiting ...");
             doWait();
         }
 
@@ -140,6 +149,11 @@ void AudioFlinger::mixingThreadLoop()
         {
             _mixing = _next;
         }
+        else if (_afterNext->state == BufferState::EMPTY)
+        {
+            _mixing = _afterNext;
+        }
+
         _switchMutex.unlock();
 
         float f = AudioMixer::UNITY_GAIN_FLOAT;// / _activeTracks.size(); // normalize volume by # tracks // FIXME: do paused tracks need to be considered?
@@ -184,37 +198,45 @@ void AudioFlinger::mixingThreadLoop()
                 uint32_t channelMask = audio_channel_out_mask_from_count(2);
                 int32_t name = _mixer->getTrackName(channelMask, AUDIO_FORMAT_PCM_16_BIT,
                                                     AUDIO_SESSION_OUTPUT_MIX);
-                ALOG_ASSERT(name >= 0);
+                if (name < 0)
+                {
+                    // If we could not get the track name, it means that there're MAX_NUM_TRACKS tracks
+                    // So ignore the new track.
+                    tracksToRemove.push_back(track);
+                }
+                else
+                {
+                    _mixer->setBufferProvider(name, track);
+                    _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER,
+                                         _mixing->buf);
+                    _mixer->setParameter(
+                            name,
+                            AudioMixer::TRACK,
+                            AudioMixer::MIXER_FORMAT,
+                            (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
+                    _mixer->setParameter(
+                            name,
+                            AudioMixer::TRACK,
+                            AudioMixer::FORMAT,
+                            (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
+                    _mixer->setParameter(
+                            name,
+                            AudioMixer::TRACK,
+                            AudioMixer::MIXER_CHANNEL_MASK,
+                            (void *) (uintptr_t) channelMask);
+                    _mixer->setParameter(
+                            name,
+                            AudioMixer::TRACK,
+                            AudioMixer::CHANNEL_MASK,
+                            (void *) (uintptr_t) channelMask);
 
-                _mixer->setBufferProvider(name, track);
-                _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER, _mixing->buf);
-                _mixer->setParameter(
-                        name,
-                        AudioMixer::TRACK,
-                        AudioMixer::MIXER_FORMAT,
-                        (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
-                _mixer->setParameter(
-                        name,
-                        AudioMixer::TRACK,
-                        AudioMixer::FORMAT,
-                        (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
-                _mixer->setParameter(
-                        name,
-                        AudioMixer::TRACK,
-                        AudioMixer::MIXER_CHANNEL_MASK,
-                        (void *) (uintptr_t) channelMask);
-                _mixer->setParameter(
-                        name,
-                        AudioMixer::TRACK,
-                        AudioMixer::CHANNEL_MASK,
-                        (void *) (uintptr_t) channelMask);
+                    _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &f);
+                    _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &f);
+                    _mixer->enable(name);
 
-                _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &f);
-                _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &f);
-                _mixer->enable(name);
-
-                track->setState(Track::State::PLAYING);
-                track->setName(name);
+                    track->setState(Track::State::PLAYING);
+                    track->setName(name);
+                }
             }
             else
             {
@@ -244,6 +266,7 @@ void AudioFlinger::mixingThreadLoop()
                     LOGD("Play over ...");
                     _mixer->deleteTrackName(track->getName());
                     tracksToRemove.push_back(track);
+                    track->setState(Track::State::OVER);
                 }
             }
         }
@@ -269,7 +292,10 @@ void AudioFlinger::mixingThreadLoop()
         for (Track* track : tracksToRemove)
         {
             removeItemFromVector(_activeTracks, track);
-            track->onDestroy();
+            if (track->onStateChanged != nullptr)
+            {
+                track->onStateChanged(Track::State::DESTROYED);
+            }
         }
 
         _activeTracksMutex.unlock();
@@ -282,8 +308,9 @@ void AudioFlinger::switchBuffers()
     _switchMutex.lock();
     OutputBuffer* tmp = _busy;
     _busy = _current; _busy->state = BufferState::BUSY;
-    _current = _next; // Don't change new current state
-    _next = tmp; _next->state = BufferState::EMPTY;
+    _current = _next; // Don't change current state
+    _next = _afterNext; // Don't change next state
+    _afterNext = tmp; _afterNext->state = BufferState::EMPTY;
     _switchMutex.unlock();
 
     _mixingCondition.notify_one();
@@ -325,6 +352,6 @@ void AudioFlinger::resume()
 bool AudioFlinger::isAllBuffersFull()
 {
     std::lock_guard<std::mutex> lk(_switchMutex);
-    return _current->state == BufferState::FULL && _next->state == BufferState::FULL ;
+    return _current->state == BufferState::FULL && _next->state == BufferState::FULL && _afterNext->state == BufferState::FULL;
 }
 } // namespace cocos2d

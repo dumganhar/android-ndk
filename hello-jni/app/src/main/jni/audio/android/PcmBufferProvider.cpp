@@ -30,7 +30,7 @@ THE SOFTWARE.
 
 namespace cocos2d {
 
-static int gVerbose = 1;
+static int gVerbose = 0;
 
 PcmBufferProvider::PcmBufferProvider()
         : mAddr(nullptr)

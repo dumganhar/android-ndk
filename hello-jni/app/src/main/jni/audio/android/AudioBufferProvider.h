@@ -19,7 +19,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "utils/Errors.h"
+#include "audio/android/utils/Errors.h"
 
 namespace cocos2d {
 // ----------------------------------------------------------------------------

@@ -4,9 +4,9 @@
 
 #define LOG_TAG "PcmAudioPlayer"
 
-#include "PcmAudioPlayer.h"
-#include "OpenSLHelper.h"
-#include "AudioFlinger.h"
+#include "audio/android/PcmAudioPlayer.h"
+#include "audio/android/OpenSLHelper.h"
+#include "audio/android/AudioFlinger.h"
 
 namespace cocos2d {
 
@@ -23,6 +23,7 @@ PcmAudioPlayer::PcmAudioPlayer(AudioFlinger* flinger)
 
 PcmAudioPlayer::~PcmAudioPlayer()
 {
+    LOGD("In the destructor of PcmAudioPlayer (%p)", this);
     SL_SAFE_DELETE(_track);
 }
 
@@ -42,8 +43,22 @@ bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
         setVolume(1.0f);
 
         _track = new Track(_decResult);
-        _track->onDestroy = [this](){
-            delete this;
+        _track->onStateChanged = [this](Track::State state) {
+            if (_playEventCallback != nullptr)
+            {
+                if (state == Track::State::OVER)
+                {
+                    _playEventCallback(State::OVER);
+                }
+                else if (state == Track::State::STOPPED)
+                {
+                    _playEventCallback(State::STOPPED);
+                }
+                else if (state == Track::State::DESTROYED)
+                {
+                    delete this;
+                }
+            }
         };
     }
 
@@ -102,7 +117,7 @@ void PcmAudioPlayer::setState(State state)
 void PcmAudioPlayer::play()
 {
     // put track to AudioFlinger
-    LOGD("PcmAudioPlayer (%p) play ...", this);
+    LOGD("PcmAudioPlayer (%p) play (%s) ...", this, _url.c_str());
     _audioFlinger->addTrack(_track);
 }
 

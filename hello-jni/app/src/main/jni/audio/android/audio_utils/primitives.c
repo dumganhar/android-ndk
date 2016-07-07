@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "cutils/bitops.h"  /* for popcount() */
-#include <audio_utils/primitives.h>
-#include "private/private.h"
+#include "audio/android/cutils/bitops.h"  /* for popcount() */
+#include "audio/android/audio_utils/include/audio_utils/primitives.h"
+#include "audio/android/audio_utils/private/private.h"
 
 void ditherAndClamp(int32_t* out, const int32_t *sums, size_t c)
 {

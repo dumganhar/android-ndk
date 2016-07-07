@@ -70,13 +70,13 @@ private:
 
     std::mutex _activeTracksMutex;
     std::vector<Track*> _activeTracks;
-
-    OutputBuffer _buffers[3];
-
     std::mutex _switchMutex;
+
+    OutputBuffer _buffers[4];
     OutputBuffer* _busy;
     OutputBuffer* _current;
     OutputBuffer* _next;
+    OutputBuffer* _afterNext;
 
     OutputBuffer* _mixing;
 

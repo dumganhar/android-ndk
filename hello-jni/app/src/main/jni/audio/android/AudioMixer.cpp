@@ -34,14 +34,14 @@
 //
 #include "audio.h"
 //
-#include "audio_utils/primitives.h"
+#include "audio/android/audio_utils/include/audio_utils/primitives.h"
 //#include <audio_utils/format.h>
 //#include <common_time/local_clock.h>
 //#include <common_time/cc_helper.h>
 
-#include "AudioMixerOps.h"
-#include "AudioMixer.h"
-#include "cutils/log.h"
+#include "audio/android/AudioMixerOps.h"
+#include "audio/android/AudioMixer.h"
+#include "audio/android/cutils/log.h"
 
 // The FCC_2 macro refers to the Fixed Channel Count of 2 for the legacy integer mixer.
 #ifndef FCC_2
@@ -55,7 +55,7 @@
  * being used. This is a considerable amount of log spam, so don't enable unless you
  * are verifying the hook based code.
  */
-#define VERY_VERY_VERBOSE_LOGGING // FIXME: cjh comment this
+//#define VERY_VERY_VERBOSE_LOGGING
 #ifdef VERY_VERY_VERBOSE_LOGGING
 #define ALOGVV ALOGV
 //define ALOGVV printf  // for test-mixer.cpp

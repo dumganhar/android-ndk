@@ -7,9 +7,9 @@
 
 
 #include <mutex>
-#include "IAudioPlayer.h"
-#include "PcmData.h"
-#include "Track.h"
+#include "audio/android/IAudioPlayer.h"
+#include "audio/android/PcmData.h"
+#include "audio/android/Track.h"
 
 namespace cocos2d {
 

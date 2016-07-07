@@ -23,14 +23,14 @@
 #include <pthread.h>
 
 //#include <hardware/audio_effect.h>
-#include "AudioBufferProvider.h"
-#include "AudioResamplerPublic.h"
+#include "audio/android/AudioBufferProvider.h"
+#include "audio/android/AudioResamplerPublic.h"
 //#include <media/nbaio/NBLog.h>
 //#include <system/audio.h>
 //#include <utils/Compat.h>
 //#include <utils/threads.h>
 
-#include "AudioResampler.h"
+#include "audio/android/AudioResampler.h"
 #include "audio.h"
 //#include "BufferProviders.h"
 

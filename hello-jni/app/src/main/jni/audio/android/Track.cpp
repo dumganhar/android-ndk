@@ -2,12 +2,12 @@
 // Created by James Chen on 7/5/16.
 //
 
-#include "Track.h"
+#include "audio/android/Track.h"
 
 namespace cocos2d {
 
 Track::Track(const PcmData &pcmData)
-        : onDestroy(nullptr)
+        : onStateChanged(nullptr)
         , _pcmData(pcmData)
         , _state(State::IDLE)
         , _name(-1)

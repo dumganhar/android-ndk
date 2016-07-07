@@ -92,7 +92,6 @@ bool PcmAudioService::enqueue()
         }
         else
         {
-            LOGD("enqueue buffer ...");
             auto current = _flinger->current();
             ALOG_ASSERT(current != nullptr, "current buffer is nullptr ...");
             SLresult r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, current->buf, current->size);

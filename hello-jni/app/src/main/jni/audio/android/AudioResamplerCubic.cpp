@@ -19,7 +19,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
-#include "cutils/log.h"
+#include "audio/android/cutils/log.h"
 
 #include "audio/android/AudioResampler.h"
 #include "audio/android/AudioResamplerCubic.h"

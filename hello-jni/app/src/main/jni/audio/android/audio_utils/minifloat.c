@@ -15,7 +15,7 @@
  */
 
 #include <math.h>
-#include <audio_utils/minifloat.h>
+#include "audio/android/audio_utils/include/audio_utils/minifloat.h"
 
 #define EXPONENT_BITS   3
 #define EXPONENT_MAX    ((1 << EXPONENT_BITS) - 1)

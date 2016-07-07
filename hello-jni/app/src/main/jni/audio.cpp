@@ -11,6 +11,7 @@
 #include <set>
 #include <vector>
 #include <android/log.h>
+#include <chrono>
 
 #define LOG_TAG "cjh"
 #define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
@@ -29,6 +30,9 @@ static std::set<IAudioPlayer*> __audioPlayers;
 
 static int __fileIndex = 0;
 static std::string __currentFilePath;
+
+#define clockNow() std::chrono::high_resolution_clock::now()
+#define intervalInMS(oldTime, newTime) (static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>((newTime) - (oldTime)).count()) / 1000.f)
 
 static int fdGetter(const std::string& url, off_t* start, off_t* length)
 {
@@ -135,12 +139,16 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
 
     ++__fileIndex;
 
+    auto oldTime = clockNow();
     auto player = __audioPlayerProvider->getAudioPlayer(__currentFilePath);
     if (player != nullptr) {
         player->play();
     } else {
         LOGE("Oops, player is null ...");
     }
+
+    auto newTime = clockNow();
+    LOGD("play waste: %fms", intervalInMS(oldTime, newTime));
     return 1;
 }
 

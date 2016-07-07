@@ -5,7 +5,7 @@
 #ifndef HELLO_JNI_IVOLUMEPROVIDER_H
 #define HELLO_JNI_IVOLUMEPROVIDER_H
 
-#include "audio_utils/minifloat.h"
+#include "audio/android/audio_utils/include/audio_utils/minifloat.h"
 
 class IVolumeProvider {
 public:
