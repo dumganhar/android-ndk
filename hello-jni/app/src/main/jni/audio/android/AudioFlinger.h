@@ -31,6 +31,7 @@ public:
     bool hasActiveTracks();
     bool isCurrentBufferFull();
     bool isAllBuffersFull();
+    bool hasPlayingTacks();
 
     void pause();
     void resume();

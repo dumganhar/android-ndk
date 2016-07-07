@@ -64,7 +64,7 @@ PcmAudioService::~PcmAudioService()
 
 bool PcmAudioService::enqueue()
 {
-    if (_flinger->hasActiveTracks())
+    if (_flinger->hasPlayingTacks())
     {
         // Don't need to check all buffers
 //        if (_flinger->isAllBuffersFull())

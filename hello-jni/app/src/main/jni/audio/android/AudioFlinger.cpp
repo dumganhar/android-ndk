@@ -354,4 +354,22 @@ bool AudioFlinger::isAllBuffersFull()
     std::lock_guard<std::mutex> lk(_switchMutex);
     return _current->state == BufferState::FULL && _next->state == BufferState::FULL && _afterNext->state == BufferState::FULL;
 }
+
+bool AudioFlinger::hasPlayingTacks()
+{
+    std::lock_guard<std::mutex> lk (_activeTracksMutex);
+    if (_activeTracks.empty())
+        return false;
+
+    for (Track* track : _activeTracks)
+    {
+        Track::State state = track->getState();
+        if (state == Track::State::PLAYING || state == Track::State::RESUMED)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
 } // namespace cocos2d
