@@ -1,22 +1,39 @@
-//
-// Created by James Chen on 7/5/16.
-//
+/****************************************************************************
+Copyright (c) 2016 Chukong Technologies Inc.
 
-#define LOG_TAG "AudioFlinger"
+http://www.cocos2d-x.org
 
-#include "audio/android/AudioFlinger.h"
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-#include <algorithm>
-#include <audio/android/cutils/log.h>
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+****************************************************************************/
+
+#define LOG_TAG "AudioMixerController"
+
+#include "audio/android/AudioMixerController.h"
 #include "audio/android/AudioMixer.h"
 #include "audio/android/Track.h"
 #include "audio/android/OpenSLHelper.h"
 
+#include <algorithm>
+
 namespace cocos2d {
 
-#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
-
-AudioFlinger::AudioFlinger(int bufferSizeInFrames, int sampleRate, int channelCount)
+AudioMixerController::AudioMixerController(int bufferSizeInFrames, int sampleRate, int channelCount)
         : _bufferSizeInFrames(bufferSizeInFrames)
         , _sampleRate(sampleRate)
         , _channelCount(channelCount)
@@ -36,11 +53,11 @@ AudioFlinger::AudioFlinger(int bufferSizeInFrames, int sampleRate, int channelCo
     _busy = &_buffers[0];
     _current = &_buffers[1];
     _next = &_buffers[2];
-    _afterNext = &_buffers[3];
+//    _afterNext = &_buffers[3];
     _mixing = nullptr;
 }
 
-AudioFlinger::~AudioFlinger()
+AudioMixerController::~AudioMixerController()
 {
     destroy();
     if (_mixingThread != nullptr)
@@ -62,14 +79,14 @@ AudioFlinger::~AudioFlinger()
     }
 }
 
-bool AudioFlinger::init()
+bool AudioMixerController::init()
 {
     _mixer = new (std::nothrow) AudioMixer(_bufferSizeInFrames, _sampleRate);
-    _mixingThread = new (std::nothrow) std::thread(&AudioFlinger::mixingThreadLoop, this);
+    _mixingThread = new (std::nothrow) std::thread(&AudioMixerController::mixingThreadLoop, this);
     return true;
 }
 
-bool AudioFlinger::addTrack(Track* track)
+bool AudioMixerController::addTrack(Track* track)
 {
     bool ret = false;
 
@@ -96,7 +113,7 @@ static void removeItemFromVector(std::vector<T>& v, T item)
     }
 }
 
-void AudioFlinger::mixingThreadLoop()
+void AudioMixerController::mixingThreadLoop()
 {
     auto doWait = [this](){
         std::unique_lock<std::mutex> lk(_mixingMutex);
@@ -111,7 +128,7 @@ void AudioFlinger::mixingThreadLoop()
 
     for (;;)
     {
-        LOGD("AudioFlinger::mixingThreadLoop()");
+        ALOGV("AudioMixerController::mixingThreadLoop()");
 
 
         _switchMutex.lock();
@@ -127,9 +144,9 @@ void AudioFlinger::mixingThreadLoop()
             doWait();
         }
 
-        if  (_current->state == BufferState::FULL && _next->state == BufferState::FULL && _afterNext->state == BufferState::FULL)
+        if  (_current->state == BufferState::FULL && _next->state == BufferState::FULL)//cjh && _afterNext->state == BufferState::FULL)
         {
-            LOGD("Yeah, all buffers are full, waiting ...");
+            ALOGV("Yeah, all buffers are full, waiting ...");
             doWait();
         }
 
@@ -149,10 +166,10 @@ void AudioFlinger::mixingThreadLoop()
         {
             _mixing = _next;
         }
-        else if (_afterNext->state == BufferState::EMPTY)
-        {
-            _mixing = _afterNext;
-        }
+//        else if (_afterNext->state == BufferState::EMPTY)
+//        {
+//            _mixing = _afterNext;
+//        }
 
         _switchMutex.unlock();
 
@@ -170,12 +187,12 @@ void AudioFlinger::mixingThreadLoop()
 ////        ALOG_ASSERT(buffer.frameCount == _mixing->size / 2, "buffer.frameCount:%d, _mixing->size/2:%d", buffer.frameCount, _mixing->size/2);
 //        if (r == NO_ERROR)
 //        {
-//            LOGD("getNextBuffer succeed ...");
+//            ALOGV("getNextBuffer succeed ...");
 //            memcpy(_mixing->buf, buffer.raw, _mixing->size);
 //        }
 //        if (buffer.raw == nullptr)
 //        {
-//            LOGD("Play over ...");
+//            ALOGV("Play over ...");
 //            tracksToRemove.push_back(track);
 //        }
 //        else
@@ -263,7 +280,7 @@ void AudioFlinger::mixingThreadLoop()
 
                 if (track->isPlayOver())
                 {
-                    LOGD("Play over ...");
+                    ALOGV("Play over ...");
                     _mixer->deleteTrackName(track->getName());
                     tracksToRemove.push_back(track);
                     track->setState(Track::State::OVER);
@@ -276,14 +293,17 @@ void AudioFlinger::mixingThreadLoop()
 
         if (hasAvailableTracks)
         {
-            LOGD("active tracks: %d", (int) _activeTracks.size());
+            ALOGV("active tracks: %d", (int) _activeTracks.size());
+            auto oldTime = clockNow();
             _mixer->process(AudioBufferProvider::kInvalidPTS);
+            auto newTime = clockNow();
+            ALOGV("mixing waste: %fms", intervalInMS(oldTime, newTime));
             _mixing->state = BufferState::FULL;
-            LOGD("mixer process end");
+            ALOGV("mixer process end");
         }
         else
         {
-            LOGD("Doesn't have enough tracks: %d, %d", (int) _activeTracks.size(), (int) tracksToRemove.size());
+            ALOGV("Doesn't have enough tracks: %d, %d", (int) _activeTracks.size(), (int) tracksToRemove.size());
         }
 
         _activeTracksMutex.lock();
@@ -302,21 +322,21 @@ void AudioFlinger::mixingThreadLoop()
     }
 }
 
-void AudioFlinger::switchBuffers()
+void AudioMixerController::switchBuffers()
 {
-    LOGD("AudioFlinger::switchBuffers ...");
+    ALOGV("AudioMixerController::switchBuffers ...");
     _switchMutex.lock();
     OutputBuffer* tmp = _busy;
     _busy = _current; _busy->state = BufferState::BUSY;
     _current = _next; // Don't change current state
-    _next = _afterNext; // Don't change next state
-    _afterNext = tmp; _afterNext->state = BufferState::EMPTY;
+    _next = tmp; _next->state = BufferState::EMPTY; //_afterNext; // Don't change next state
+//    _afterNext = tmp; _afterNext->state = BufferState::EMPTY;
     _switchMutex.unlock();
 
     _mixingCondition.notify_one();
 }
 
-void AudioFlinger::destroy()
+void AudioMixerController::destroy()
 {
     _isDestroy = true;
     while(_isDestroy)
@@ -326,36 +346,36 @@ void AudioFlinger::destroy()
     }
 }
 
-bool AudioFlinger::isCurrentBufferFull()
+bool AudioMixerController::isCurrentBufferFull()
 {
     std::lock_guard<std::mutex> lk(_switchMutex);
     return _current->state == BufferState::FULL;
 }
 
-bool AudioFlinger::hasActiveTracks()
+bool AudioMixerController::hasActiveTracks()
 {
     std::lock_guard<std::mutex> lk(_activeTracksMutex);
     return !_activeTracks.empty();
 }
 
-void AudioFlinger::pause()
+void AudioMixerController::pause()
 {
     _isPaused = true;
 }
 
-void AudioFlinger::resume()
+void AudioMixerController::resume()
 {
     _isPaused = false;
     _mixingCondition.notify_one();
 }
 
-bool AudioFlinger::isAllBuffersFull()
+bool AudioMixerController::isAllBuffersFull()
 {
     std::lock_guard<std::mutex> lk(_switchMutex);
-    return _current->state == BufferState::FULL && _next->state == BufferState::FULL && _afterNext->state == BufferState::FULL;
+    return _current->state == BufferState::FULL && _next->state == BufferState::FULL/* && _afterNext->state == BufferState::FULL*/;
 }
 
-bool AudioFlinger::hasPlayingTacks()
+bool AudioMixerController::hasPlayingTacks()
 {
     std::lock_guard<std::mutex> lk (_activeTracksMutex);
     if (_activeTracks.empty())

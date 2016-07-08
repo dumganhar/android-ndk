@@ -1,29 +1,50 @@
-//
-// Created by James Chen on 7/4/16.
-//
+/****************************************************************************
+Copyright (c) 2016 Chukong Technologies Inc.
+
+http://www.cocos2d-x.org
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+****************************************************************************/
 
 #define LOG_TAG "PcmAudioPlayer"
 
+#include "audio/android/cutils/log.h"
 #include "audio/android/PcmAudioPlayer.h"
 #include "audio/android/OpenSLHelper.h"
-#include "audio/android/AudioFlinger.h"
+#include "audio/android/AudioMixerController.h"
 
 namespace cocos2d {
 
-PcmAudioPlayer::PcmAudioPlayer(AudioFlinger* flinger)
+PcmAudioPlayer::PcmAudioPlayer(AudioMixerController * controller)
         : _id(-1)
         , _volume(0.0f)
         , _isLoop(false)
         , _state(State::INVALID)
         , _track(nullptr)
         , _playEventCallback(nullptr)
-        , _audioFlinger(flinger)
+        , _controller(controller)
 {
 }
 
 PcmAudioPlayer::~PcmAudioPlayer()
 {
-    LOGD("In the destructor of PcmAudioPlayer (%p)", this);
+    ALOGV("In the destructor of PcmAudioPlayer (%p)", this);
     SL_SAFE_DELETE(_track);
 }
 
@@ -32,7 +53,7 @@ bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
     std::lock_guard<std::mutex> lk(_stateMutex);
     if (_state == State::PLAYING)
     {
-        LOGE("PcmAudioService (%s) is playing, ignore play ...", _url.c_str());
+        ALOGE("PcmAudioService (%s) is playing, ignore play ...", _url.c_str());
         return false;
     }
     else
@@ -116,26 +137,26 @@ void PcmAudioPlayer::setState(State state)
 
 void PcmAudioPlayer::play()
 {
-    // put track to AudioFlinger
-    LOGD("PcmAudioPlayer (%p) play (%s) ...", this, _url.c_str());
-    _audioFlinger->addTrack(_track);
+    // put track to AudioMixerController
+    ALOGV("PcmAudioPlayer (%p) play (%s) ...", this, _url.c_str());
+    _controller->addTrack(_track);
 }
 
 void PcmAudioPlayer::pause()
 {
-    LOGD("PcmAudioPlayer (%p) pause ...", this);
+    ALOGV("PcmAudioPlayer (%p) pause ...", this);
     _track->setState(Track::State::PAUSED);
 }
 
 void PcmAudioPlayer::resume()
 {
-    LOGD("PcmAudioPlayer (%p) resume ...", this);
+    ALOGV("PcmAudioPlayer (%p) resume ...", this);
     _track->setState(Track::State::RESUMED);
 }
 
 void PcmAudioPlayer::stop()
 {
-    LOGD("PcmAudioPlayer (%p) stop ...", this);
+    ALOGV("PcmAudioPlayer (%p) stop ...", this);
     _track->setState(Track::State::STOPPED);
 }
 

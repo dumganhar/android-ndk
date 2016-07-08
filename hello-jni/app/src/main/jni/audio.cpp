@@ -6,16 +6,12 @@
 #include "audio.h"
 
 #include "audio/android/AudioPlayerProvider.h"
-#include "audio/android/IAudioPlayer.h"
 
 #include <set>
-#include <vector>
-#include <android/log.h>
 #include <chrono>
+#include "audio/android/cutils/log.h"
 
-#define LOG_TAG "cjh"
-#define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,__VA_ARGS__)
-#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,__VA_ARGS__)
+#define LOG_TAG "audio.cpp"
 
 #define AUDIO_FUNC(NAME)    Java_com_example_hellojni_HelloJni_##NAME
 
@@ -36,7 +32,7 @@ static std::string __currentFilePath;
 
 static int fdGetter(const std::string& url, off_t* start, off_t* length)
 {
-    LOGD("in the callback of fdgetter ...");
+    ALOGV("in the callback of fdgetter ...");
     int ret = 0;
     auto asset = AAssetManager_open(__assetManager, url.c_str(), AASSET_MODE_UNKNOWN);
     // open asset as file descriptor
@@ -116,7 +112,7 @@ AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobject
         jstring filename = (jstring) env->GetObjectArrayElement(files, i);
         jboolean loaded = loadSample(env, amgr, filename);
         if (!loaded) {
-            LOGE("jniLoadSamples failed");
+            ALOGE("jniLoadSamples failed");
             return JNI_FALSE;
         }
     }
@@ -144,11 +140,11 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
     if (player != nullptr) {
         player->play();
     } else {
-        LOGE("Oops, player is null ...");
+        ALOGE("Oops, player is null ...");
     }
 
     auto newTime = clockNow();
-    LOGD("play waste: %fms", intervalInMS(oldTime, newTime));
+    ALOGV("play waste: %fms", intervalInMS(oldTime, newTime));
     return 1;
 }
 

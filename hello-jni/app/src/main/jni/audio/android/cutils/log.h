@@ -25,8 +25,8 @@
 // supports O_APPEND.  These calls have mutex-protected data structures
 // and so are NOT reentrant.  Do not use LOG in a signal handler.
 //
-#ifndef _LIBS_LOG_LOG_H
-#define _LIBS_LOG_LOG_H
+#ifndef COCOS_CUTILS_LOG_H
+#define COCOS_CUTILS_LOG_H
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -41,7 +41,7 @@ extern "C" {
 #endif
 
 // ---------------------------------------------------------------------
-
+#define LOG_NDEBUG 1
 /*
  * Normally we strip ALOGV (VERBOSE messages) from release builds.
  * You can modify this (for example with "#define LOG_NDEBUG 0"
@@ -566,4 +566,4 @@ int __android_log_buf_print(int bufID, int prio, const char *tag, const char *fm
 }
 #endif
 
-#endif /* _LIBS_LOG_LOG_H */
+#endif /* COCOS_CUTILS_LOG_H */

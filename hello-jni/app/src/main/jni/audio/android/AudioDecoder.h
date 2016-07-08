@@ -31,6 +31,8 @@ THE SOFTWARE.
 #include <mutex>
 #include <condition_variable>
 
+namespace cocos2d {
+
 /* Explicitly requesting SL_IID_ANDROIDSIMPLEBUFFERQUEUE and SL_IID_PREFETCHSTATUS
 * on the UrlAudioPlayer object for decoding, SL_IID_METADATAEXTRACTION for retrieving the
 * format of the decoded audio */
@@ -43,20 +45,27 @@ THE SOFTWARE.
 #define BUFFER_SIZE_IN_BYTES   (BUFFER_SIZE_IN_SAMPLES)
 
 
-class AudioDecoder {
+class AudioDecoder
+{
 public:
-    AudioDecoder(SLEngineItf engineItf, const std::string& url, int sampleRate);
+    AudioDecoder(SLEngineItf engineItf, const std::string &url, int sampleRate);
+
     virtual ~AudioDecoder();
 
-    bool start(const FdGetterCallback& fdGetterCallback);
+    bool start(const FdGetterCallback &fdGetterCallback);
 
-    inline PcmData getResult() { return _result; };
+    inline PcmData getResult()
+    { return _result; };
 
 private:
     void resample();
+
     void signalEos();
+
     void decodeToPcmCallback(SLAndroidSimpleBufferQueueItf queueItf);
-    void prefetchCallback( SLPrefetchStatusItf caller, SLuint32 event);
+
+    void prefetchCallback(SLPrefetchStatusItf caller, SLuint32 event);
+
     void decodeProgressCallback(SLPlayItf caller, SLuint32 event);
 
 private:
@@ -92,12 +101,13 @@ private:
     std::condition_variable _eosCondition;
 
     /* Structure for passing information to callback function */
-    typedef struct CallbackCntxt_ {
+    typedef struct CallbackCntxt_
+    {
         SLPlayItf playItf;
         SLMetadataExtractionItf metaItf;
-        SLuint32  size;
-        SLint8*   pDataBase;    // Base address of local audio data storage
-        SLint8*   pData;        // Current address of local audio data storage
+        SLuint32 size;
+        SLint8 *pDataBase;    // Base address of local audio data storage
+        SLint8 *pData;        // Current address of local audio data storage
     } CallbackCntxt;
 
     CallbackCntxt _decContext;
@@ -109,5 +119,6 @@ private:
     void interleave();
 };
 
+} // namespace cocos2d {
 
 #endif //COCOS_AUDIODECODER_H

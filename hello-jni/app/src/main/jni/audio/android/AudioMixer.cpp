@@ -655,7 +655,7 @@ void AudioMixer::setParameter(int name, int target, int param, void *value)
                 invalidateState(1 << name);
             }
             } break;
-        // FIXME do we want to support setting the downmix type from AudioFlinger?
+        // FIXME do we want to support setting the downmix type from AudioMixerController?
         //         for a specific track? or per mixer?
         /* case DOWNMIX_TYPE:
             break          */

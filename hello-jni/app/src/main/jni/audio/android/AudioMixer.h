@@ -15,8 +15,8 @@
 ** limitations under the License.
 */
 
-#ifndef ANDROID_AUDIO_MIXER_H
-#define ANDROID_AUDIO_MIXER_H
+#ifndef COCOS_AUDIO_MIXER_H
+#define COCOS_AUDIO_MIXER_H
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -395,4 +395,4 @@ private:
 // ----------------------------------------------------------------------------
 } // namespace cocos2d
 
-#endif // ANDROID_AUDIO_MIXER_H
+#endif // COCOS_AUDIO_MIXER_H

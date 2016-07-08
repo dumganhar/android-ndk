@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_AUDIO_MIXER_OPS_H
-#define ANDROID_AUDIO_MIXER_OPS_H
+#ifndef COCOS_AUDIO_MIXER_OPS_H
+#define COCOS_AUDIO_MIXER_OPS_H
 
 #include "audio/android/cutils/log.h"
 
@@ -449,4 +449,4 @@ inline void volumeMulti(TO* out, size_t frameCount,
 
 };
 
-#endif /* ANDROID_AUDIO_MIXER_OPS_H */
+#endif /* COCOS_AUDIO_MIXER_OPS_H */

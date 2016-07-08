@@ -37,7 +37,7 @@ namespace cocos2d {
 class PcmAudioPlayer;
 class PcmAudioService;
 class UrlAudioPlayer;
-class AudioFlinger;
+class AudioMixerController;
 
 class AudioPlayerProvider
 {
@@ -96,7 +96,7 @@ private:
     std::unordered_map<std::string, PcmData> _pcmCache;
 
     PcmAudioService* _pcmAudioService;
-    AudioFlinger* _audioFlinger;
+    AudioMixerController * _audioFlinger;
 };
 
 } //namespace cocos2d {

@@ -30,6 +30,8 @@ THE SOFTWARE.
 #include <vector>
 #include <memory>
 
+namespace cocos2d {
+
 struct PcmData
 {
     std::shared_ptr<std::vector<char>> pcmBuffer;
@@ -43,16 +45,24 @@ struct PcmData
     float duration; // in seconds
 
     PcmData();
-    ~PcmData();
-    PcmData(const PcmData& o);
-    PcmData(PcmData&& o);
 
-    PcmData& operator= (const PcmData& o);
-    PcmData& operator= (PcmData&& o);
+    ~PcmData();
+
+    PcmData(const PcmData &o);
+
+    PcmData(PcmData &&o);
+
+    PcmData &operator=(const PcmData &o);
+
+    PcmData &operator=(PcmData &&o);
 
     void reset();
+
     bool isValid() const;
+
     std::string toString() const;
 };
+
+} // namespace cocos2d {
 
 #endif //COCOS_PCMDATA_H

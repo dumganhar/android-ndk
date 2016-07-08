@@ -24,9 +24,8 @@ THE SOFTWARE.
 
 #define LOG_TAG "PcmBufferProvider"
 
+#include "audio/android/cutils/log.h"
 #include "audio/android/PcmBufferProvider.h"
-
-#include "audio/android/OpenSLHelper.h"
 
 namespace cocos2d {
 
@@ -61,7 +60,7 @@ status_t PcmBufferProvider::getNextBuffer(Buffer *buffer,
     }
 
     if (gVerbose) {
-        LOGD("getNextBuffer() requested %zu frames out of %zu frames available,"
+        ALOGV("getNextBuffer() requested %zu frames out of %zu frames available,"
                        " and returned %zu frames\n",
                requestedFrames, (size_t) (mNumFrames - mNextFrame), buffer->frameCount);
     }
@@ -77,13 +76,13 @@ status_t PcmBufferProvider::getNextBuffer(Buffer *buffer,
 
 void PcmBufferProvider::releaseBuffer(Buffer *buffer) {
     if (buffer->frameCount > mUnrel) {
-        LOGE("ERROR releaseBuffer() released %zu frames but only %zu available "
+        ALOGV("ERROR releaseBuffer() released %zu frames but only %zu available "
                 "to release\n", buffer->frameCount, mUnrel);
         mNextFrame += mUnrel;
         mUnrel = 0;
     } else {
         if (gVerbose) {
-            LOGD("releaseBuffer() released %zu frames out of %zu frames available "
+            ALOGV("releaseBuffer() released %zu frames out of %zu frames available "
                            "to release\n", buffer->frameCount, mUnrel);
         }
         mNextFrame += buffer->frameCount;

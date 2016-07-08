@@ -34,7 +34,7 @@ THE SOFTWARE.
 
 namespace cocos2d {
 
-class AudioFlinger;
+class AudioMixerController;
 
 class PcmAudioService
 {
@@ -50,7 +50,7 @@ private:
 
     virtual ~PcmAudioService();
 
-    bool init(AudioFlinger* flinger, int numChannels, int sampleRate, int bufferSizeInBytes);
+    bool init(AudioMixerController * flinger, int numChannels, int sampleRate, int bufferSizeInBytes);
 
     bool enqueue();
 
@@ -72,7 +72,9 @@ private:
     int _sampleRate;
     int _bufferSizeInBytes;
 
-    AudioFlinger* _flinger;
+    AudioMixerController * _flinger;
+
+    std::chrono::high_resolution_clock::time_point _lastEnqueueTime;
 
     friend class SLPcmAudioPlayerCallbackProxy;
 

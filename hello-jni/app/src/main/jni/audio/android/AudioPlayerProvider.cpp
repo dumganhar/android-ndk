@@ -28,8 +28,9 @@ THE SOFTWARE.
 #include "audio/android/UrlAudioPlayer.h"
 #include "audio/android/PcmAudioPlayer.h"
 #include "audio/android/AudioDecoder.h"
-#include "audio/android/AudioFlinger.h"
+#include "audio/android/AudioMixerController.h"
 #include "audio/android/PcmAudioService.h"
+#include "audio/android/cutils/log.h"
 
 #include <sys/system_properties.h>
 #include <stdlib.h>
@@ -51,11 +52,11 @@ static int getSystemAPILevel()
     if (len > 0)
     {
         apiLevel = atoi(sdk_ver_str);
-        LOGD("android build version:%d", apiLevel);
+        ALOGD("Android API level: %d", apiLevel);
     }
     else
     {
-        LOGD("Fail to get android build version.");
+        ALOGE("Fail to get Android API level!");
     }
     __systemApiLevel = apiLevel;
     return apiLevel;
@@ -81,10 +82,10 @@ AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outp
           _deviceSampleRate(deviceSampleRate), _bufferSizeInFrames(bufferSizeInFrames),
           _fdGetterCallback(fdGetterCallback), _pcmAudioService(nullptr), _audioFlinger(nullptr)
 {
-    LOGD("deviceSampleRate: %d, bufferSizeInFrames: %d", _deviceSampleRate, _bufferSizeInFrames);
+    ALOGV("deviceSampleRate: %d, bufferSizeInFrames: %d", _deviceSampleRate, _bufferSizeInFrames);
     if (getSystemAPILevel() >= 17)
     {
-        _audioFlinger = new (std::nothrow) AudioFlinger(_bufferSizeInFrames, _deviceSampleRate, 2);
+        _audioFlinger = new (std::nothrow) AudioMixerController(_bufferSizeInFrames, _deviceSampleRate, 2);
         _audioFlinger->init();
         _pcmAudioService = new (std::nothrow) PcmAudioService(engineItf, outputMixObject);
         _pcmAudioService->init(_audioFlinger, 2, deviceSampleRate, bufferSizeInFrames * 2);
@@ -93,7 +94,7 @@ AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outp
 
 AudioPlayerProvider::~AudioPlayerProvider()
 {
-    LOGD("~AudioPlayerProvider()");
+    ALOGV("~AudioPlayerProvider()");
     UrlAudioPlayer::stopAll();
     UrlAudioPlayer::update();
 
@@ -141,7 +142,7 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
                 player = obtainPcmAudioPlayer(info.url, pcmData);
                 if (player == nullptr)
                 {
-                    LOGD("2, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
+                    ALOGV("2, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
                     player = createUrlAudioPlayer(info);
                 }
             }
@@ -184,7 +185,7 @@ PcmData AudioPlayerProvider::preloadEffect(const AudioFileInfo &info)
 
     if (isSmallFile(info))
     {
-        LOGD("AudioPlayerProvider::preloadEffect: %s", audioFilePath.c_str());
+        ALOGV("AudioPlayerProvider::preloadEffect: %s", audioFilePath.c_str());
         AudioDecoder decoder(_engineItf, audioFilePath, _deviceSampleRate);
         if (decoder.start(_fdGetterCallback))
         {
@@ -193,12 +194,12 @@ PcmData AudioPlayerProvider::preloadEffect(const AudioFileInfo &info)
         }
         else
         {
-            LOGE("decode (%s) failed!", audioFilePath.c_str());
+            ALOGE("decode (%s) failed!", audioFilePath.c_str());
         }
     }
     else
     {
-        LOGD("File (%s) is too large, ignore preload!", audioFilePath.c_str());
+        ALOGV("File (%s) is too large, ignore preload!", audioFilePath.c_str());
     }
     return pcmData;
 }
@@ -230,7 +231,7 @@ AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(
 
         if (assetFd <= 0)
         {
-            LOGE("Failed to open file descriptor for '%s'", audioFilePath.c_str());
+            ALOGE("Failed to open file descriptor for '%s'", audioFilePath.c_str());
             return info;
         }
 
@@ -256,7 +257,7 @@ AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(
     info.start = start;
     info.length = fileSize;
 
-    LOGD("(%s) file size: %ld", audioFilePath.c_str(), fileSize);
+    ALOGV("(%s) file size: %ld", audioFilePath.c_str(), fileSize);
 
     return info;
 }
@@ -279,11 +280,11 @@ bool AudioPlayerProvider::isSmallFile(const AudioFileInfo &info)
 
     if (iter != std::end(__audioFileIndicator))
     {
-//        LOGD("isSmallFile: found: %s: ", iter->extension.c_str());
+//        ALOGV("isSmallFile: found: %s: ", iter->extension.c_str());
         return info.length < iter->smallSizeIndicator;
     }
 
-//    LOGD("isSmallFile: not found return default value");
+//    ALOGV("isSmallFile: not found return default value");
     return info.length < __audioFileIndicator[0].smallSizeIndicator;
 }
 
@@ -315,7 +316,7 @@ PcmAudioPlayer *AudioPlayerProvider::obtainPcmAudioPlayer(const std::string &url
     }
     else
     {
-        LOGE("obtainPcmAudioPlayer failed, pcmData isn't valid!");
+        ALOGE("obtainPcmAudioPlayer failed, pcmData isn't valid!");
     }
     return pcmPlayer;
 }
@@ -325,7 +326,7 @@ UrlAudioPlayer *AudioPlayerProvider::createUrlAudioPlayer(
 {
     if (info.url.empty())
     {
-        LOGE("createUrlAudioPlayer failed, url is empty!");
+        ALOGE("createUrlAudioPlayer failed, url is empty!");
         return nullptr;
     }
 

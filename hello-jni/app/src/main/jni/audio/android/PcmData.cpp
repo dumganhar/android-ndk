@@ -25,23 +25,24 @@ THE SOFTWARE.
 #define LOG_TAG "PcmData"
 
 #include "audio/android/OpenSLHelper.h"
-
 #include "audio/android/PcmData.h"
+
+namespace cocos2d {
 
 PcmData::PcmData()
 {
-//    LOGD("In the constructor of PcmData (%p)", this);
+//    ALOGV("In the constructor of PcmData (%p)", this);
     reset();
 }
 
 PcmData::~PcmData()
 {
-//    LOGD("In the destructor of PcmData (%p)", this);
+//    ALOGV("In the destructor of PcmData (%p)", this);
 }
 
-PcmData::PcmData(const PcmData& o)
+PcmData::PcmData(const PcmData &o)
 {
-//    LOGD("In the copy constructor of PcmData (%p)", this);
+//    ALOGV("In the copy constructor of PcmData (%p)", this);
     numChannels = o.numChannels;
     sampleRate = o.sampleRate;
     bitsPerSample = o.bitsPerSample;
@@ -53,9 +54,9 @@ PcmData::PcmData(const PcmData& o)
     pcmBuffer = std::move(o.pcmBuffer);
 }
 
-PcmData::PcmData(PcmData&& o)
+PcmData::PcmData(PcmData &&o)
 {
-//    LOGD("In the move constructor of PcmData (%p)", this);
+//    ALOGV("In the move constructor of PcmData (%p)", this);
     numChannels = o.numChannels;
     sampleRate = o.sampleRate;
     bitsPerSample = o.bitsPerSample;
@@ -68,9 +69,9 @@ PcmData::PcmData(PcmData&& o)
     o.reset();
 }
 
-PcmData& PcmData::operator= (const PcmData& o)
+PcmData &PcmData::operator=(const PcmData &o)
 {
-//    LOGD("In the copy assignment of PcmData");
+//    ALOGV("In the copy assignment of PcmData");
     numChannels = o.numChannels;
     sampleRate = o.sampleRate;
     bitsPerSample = o.bitsPerSample;
@@ -83,9 +84,9 @@ PcmData& PcmData::operator= (const PcmData& o)
     return *this;
 }
 
-PcmData& PcmData::operator= (PcmData&& o)
+PcmData &PcmData::operator=(PcmData &&o)
 {
-//    LOGD("In the move assignment of PcmData");
+//    ALOGV("In the move assignment of PcmData");
     numChannels = o.numChannels;
     sampleRate = o.sampleRate;
     bitsPerSample = o.bitsPerSample;
@@ -126,9 +127,12 @@ std::string PcmData::toString() const
     snprintf(buf, sizeof(buf),
              "numChannels: %d, sampleRate: %d, bitPerSample: %d, containerSize: %d, "
                      "channelMask: %d, endianness: %d, numFrames: %d, duration: %f",
-             numChannels, sampleRate, bitsPerSample, containerSize, channelMask, endianness, numFrames, duration
+             numChannels, sampleRate, bitsPerSample, containerSize, channelMask, endianness,
+             numFrames, duration
     );
 
     ret = buf;
     return ret;
 }
+
+} // namespace cocos2d {

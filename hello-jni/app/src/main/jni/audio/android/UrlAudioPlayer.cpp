@@ -27,7 +27,6 @@ THE SOFTWARE.
 #include "audio/android/UrlAudioPlayer.h"
 
 #include <math.h>
-#include <unistd.h>
 #include <algorithm> // for std::find
 
 namespace cocos2d {
@@ -47,19 +46,19 @@ UrlAudioPlayer::UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObjec
           _isDestroyed(false), _playEventCallback(nullptr)
 {
     std::call_once(__onceFlag, []() {
-        LOGD("Initializing static variables in UrlAudioPlayer ...");
+        ALOGV("Initializing static variables in UrlAudioPlayer ...");
         __stoppedPlayers.reserve(16);
         __playOverPlayers.reserve(16);
         __allPlayers.reserve(16);
     });
     ++__instanceCount;
-    LOGD("Current UrlAudioPlayer instance count: %d", __instanceCount);
+    ALOGV("Current UrlAudioPlayer instance count: %d", __instanceCount);
     __allPlayers.push_back(this);
 }
 
 UrlAudioPlayer::~UrlAudioPlayer()
 {
-    LOGD("~UrlAudioPlayer(): %p", this);
+    ALOGV("~UrlAudioPlayer(): %p", this);
     --__instanceCount;
     auto iter = std::find(__allPlayers.begin(), __allPlayers.end(), this);
     if (iter != __allPlayers.end())
@@ -111,7 +110,7 @@ void UrlAudioPlayer::setPlayEventCallback(const PlayEventCallback &playEventCall
 
 void UrlAudioPlayer::stop()
 {
-    LOGD("UrlAudioPlayer::stop (%p, %d)", this, getId());
+    ALOGV("UrlAudioPlayer::stop (%p, %d)", this, getId());
     SLresult r = (*_playItf)->SetPlayState(_playItf, SL_PLAYSTATE_STOPPED);
     SL_RETURN_IF_FAILED(r, "UrlAudioPlayer::stop failed");
 
@@ -215,7 +214,7 @@ bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, int a
     _url = url;
     _assetFd = assetFd;
 
-    LOGD("UrlAudioPlayer::prepare: %s, %u, %d, %d, %d", _url.c_str(), locatorType, assetFd, start,
+    ALOGV("UrlAudioPlayer::prepare: %s, %u, %d, %d, %d", _url.c_str(), locatorType, assetFd, start,
          length);
     SLDataSource audioSrc;
 
@@ -240,11 +239,11 @@ bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, int a
     {
         locUri = {locatorType, (SLchar *) _url.c_str()};
         audioSrc.pLocator = &locUri;
-        LOGD("locUri: locatorType: %d", locUri.locatorType);
+        ALOGV("locUri: locatorType: %d", locUri.locatorType);
     }
     else
     {
-        LOGE("Oops, invalid locatorType: %d", locatorType);
+        ALOGE("Oops, invalid locatorType: %d", locatorType);
         return false;
     }
 
@@ -320,7 +319,7 @@ void UrlAudioPlayer::update()
     __playOverMutex.lock();
     if (!__playOverPlayers.empty())
     {
-        LOGD("UrlAudioPlayer::update, clear playOver players!");
+        ALOGV("UrlAudioPlayer::update, clear playOver players!");
         for (auto player : __playOverPlayers)
         {
             player->destroy();
@@ -332,7 +331,7 @@ void UrlAudioPlayer::update()
 
     if (!__stoppedPlayers.empty())
     {
-        LOGD("UrlAudioPlayer::update, clear stopped players!");
+        ALOGV("UrlAudioPlayer::update, clear stopped players!");
         for (auto player : __stoppedPlayers)
         {
             delete player;
@@ -353,7 +352,7 @@ void UrlAudioPlayer::destroy()
 {
     if (!_isDestroyed)
     {
-        LOGD("UrlAudioPlayer::destroy() %p", this);
+        ALOGV("UrlAudioPlayer::destroy() %p", this);
         _isDestroyed = true;
         SL_DESTROY_OBJ(_playObj);
 
@@ -362,7 +361,7 @@ void UrlAudioPlayer::destroy()
             ::close(_assetFd);
             _assetFd = 0;
         }
-        LOGD("UrlAudioPlayer::destroy end");
+        ALOGV("UrlAudioPlayer::destroy end");
     }
 }
 
