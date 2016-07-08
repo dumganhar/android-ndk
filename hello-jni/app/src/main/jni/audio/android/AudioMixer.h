@@ -22,17 +22,11 @@
 #include <sys/types.h>
 #include <pthread.h>
 
-//#include <hardware/audio_effect.h>
 #include "audio/android/AudioBufferProvider.h"
 #include "audio/android/AudioResamplerPublic.h"
-//#include <media/nbaio/NBLog.h>
-//#include <system/audio.h>
-//#include <utils/Compat.h>
-//#include <utils/threads.h>
 
 #include "audio/android/AudioResampler.h"
-#include "audio.h"
-//#include "BufferProviders.h"
+#include "audio/android/audio.h"
 
 // FIXME This is actually unity gain, which might not be max in future, expressed in U.12
 #define MAX_GAIN_INT AudioMixer::UNITY_GAIN_INT

@@ -18,30 +18,17 @@
 #define LOG_TAG "AudioMixer"
 //#define LOG_NDEBUG 0
 
-//#include "Configuration.h"
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
 #include <sys/types.h>
 
-//#include <utils/Errors.h>
-//#include <utils/Log.h>
-//
-//#include <cutils/bitops.h>
-//#include <cutils/compiler.h>
-//#include <utils/Debug.h>
-//
-#include "audio.h"
-//
+#include "audio/android/audio.h"
 #include "audio/android/audio_utils/include/audio_utils/primitives.h"
-//#include <audio_utils/format.h>
-//#include <common_time/local_clock.h>
-//#include <common_time/cc_helper.h>
 
 #include "audio/android/AudioMixerOps.h"
 #include "audio/android/AudioMixer.h"
-#include "audio/android/cutils/log.h"
 
 // The FCC_2 macro refers to the Fixed Channel Count of 2 for the legacy integer mixer.
 #ifndef FCC_2
