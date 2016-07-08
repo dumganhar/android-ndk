@@ -173,8 +173,6 @@ void AudioMixerController::mixingThreadLoop()
 
         _switchMutex.unlock();
 
-        float f = AudioMixer::UNITY_GAIN_FLOAT;// / _activeTracks.size(); // normalize volume by # tracks // FIXME: do paused tracks need to be considered?
-
         std::vector<Track*> tracksToRemove;
         tracksToRemove.reserve(_activeTracks.size());
 
@@ -247,12 +245,17 @@ void AudioMixerController::mixingThreadLoop()
                             AudioMixer::CHANNEL_MASK,
                             (void *) (uintptr_t) channelMask);
 
-                    _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &f);
-                    _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &f);
+                    gain_minifloat_packed_t volume = track->getVolumeLR();
+                    float lVolume = float_from_gain(gain_minifloat_unpack_left(volume));
+                    float rVolume = float_from_gain(gain_minifloat_unpack_right(volume));
+
+                    _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &lVolume);
+                    _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &rVolume);
                     _mixer->enable(name);
 
                     track->setState(Track::State::PLAYING);
                     track->setName(name);
+                    track->setVolumeDirty(false);
                 }
             }
             else
@@ -261,7 +264,19 @@ void AudioMixerController::mixingThreadLoop()
 
                 if (state == Track::State::PLAYING)
                 {
-                    _mixer->setParameter(track->getName(), AudioMixer::TRACK, AudioMixer::MAIN_BUFFER, _mixing->buf);
+                    int name = track->getName();
+                    _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER, _mixing->buf);
+                    if (track->isVolumeDirty())
+                    {
+                        gain_minifloat_packed_t volume = track->getVolumeLR();
+                        float lVolume = float_from_gain(gain_minifloat_unpack_left(volume));
+                        float rVolume = float_from_gain(gain_minifloat_unpack_right(volume));
+
+                        _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &lVolume);
+                        _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &rVolume);
+
+                        track->setVolumeDirty(false);
+                    }
                 }
                 else if (state == Track::State::RESUMED)
                 {
@@ -280,10 +295,17 @@ void AudioMixerController::mixingThreadLoop()
 
                 if (track->isPlayOver())
                 {
-                    ALOGV("Play over ...");
-                    _mixer->deleteTrackName(track->getName());
-                    tracksToRemove.push_back(track);
-                    track->setState(Track::State::OVER);
+                    if (track->isLoop())
+                    {
+                        track->reset();
+                    }
+                    else
+                    {
+                        ALOGV("Play over ...");
+                        _mixer->deleteTrackName(track->getName());
+                        tracksToRemove.push_back(track);
+                        track->setState(Track::State::OVER);
+                    }
                 }
             }
         }

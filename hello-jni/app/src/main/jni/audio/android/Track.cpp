@@ -21,6 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
+#include <math.h>
 #include "audio/android/Track.h"
 
 namespace cocos2d {
@@ -30,6 +31,9 @@ Track::Track(const PcmData &pcmData)
         , _pcmData(pcmData)
         , _state(State::IDLE)
         , _name(-1)
+        , _volume(1.0f)
+        , _isVolumeDirty(false)
+        , _isLoop(false)
 {
     init(_pcmData.pcmBuffer->data(), _pcmData.numFrames, _pcmData.bitsPerSample / 8 * _pcmData.numChannels);
 }
@@ -41,7 +45,34 @@ Track::~Track()
 
 gain_minifloat_packed_t Track::getVolumeLR()
 {
-    return GAIN_MINIFLOAT_PACKED_UNITY;
+    gain_minifloat_t v = gain_from_float(_volume);
+    return gain_minifloat_pack(v, v);
+}
+
+bool Track::setPosition(float pos)
+{
+    mNextFrame = (size_t) (pos * mNumFrames / _pcmData.duration);
+    mUnrel = 0;
+    return true;
+}
+
+float Track::getPosition() const
+{
+    return mNextFrame * _pcmData.duration / mNumFrames;
+}
+
+void Track::setVolume(float volume)
+{
+    if (fabs(_volume - volume) < 0.00001)
+    {
+        _volume = volume;
+        setVolumeDirty(true);
+    }
+}
+
+float Track::getVolume() const
+{
+    return _volume;
 }
 
 } // namespace cocos2d {

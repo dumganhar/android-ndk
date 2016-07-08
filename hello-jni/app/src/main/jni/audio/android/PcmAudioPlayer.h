@@ -90,8 +90,6 @@ private:
     std::string _url;
     PcmData _decResult;
 
-    float _volume;
-    bool _isLoop;
     State _state;
 
     std::mutex _stateMutex;

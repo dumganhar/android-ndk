@@ -33,8 +33,6 @@ namespace cocos2d {
 
 PcmAudioPlayer::PcmAudioPlayer(AudioMixerController * controller)
         : _id(-1)
-        , _volume(0.0f)
-        , _isLoop(false)
         , _state(State::INVALID)
         , _track(nullptr)
         , _playEventCallback(nullptr)
@@ -61,8 +59,6 @@ bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
         _url = url;
         _decResult = decResult;
 
-        setVolume(1.0f);
-
         _track = new Track(_decResult);
         _track->onStateChanged = [this](Track::State state) {
             if (_playEventCallback != nullptr)
@@ -81,6 +77,8 @@ bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
                 }
             }
         };
+
+        setVolume(1.0f);
     }
 
     return true;
@@ -92,22 +90,22 @@ void PcmAudioPlayer::rewind()
 
 void PcmAudioPlayer::setVolume(float volume)
 {
-    _volume = volume;
+    _track->setVolume(volume);
 }
 
 float PcmAudioPlayer::getVolume() const
 {
-    return _volume;
+    return _track->getVolume();
 }
 
 void PcmAudioPlayer::setLoop(bool isLoop)
 {
-    _isLoop = isLoop;
+    _track->setLoop(isLoop);
 }
 
 bool PcmAudioPlayer::isLoop() const
 {
-    return _isLoop;
+    return _track->isLoop();
 }
 
 float PcmAudioPlayer::getDuration() const
@@ -117,12 +115,12 @@ float PcmAudioPlayer::getDuration() const
 
 float PcmAudioPlayer::getPosition() const
 {
-    return 0.0f;
+    return _track->getPosition();
 }
 
 bool PcmAudioPlayer::setPosition(float pos)
 {
-    return false;
+    return _track->setPosition(pos);
 }
 
 void PcmAudioPlayer::setPlayEventCallback(const PlayEventCallback &playEventCallback)

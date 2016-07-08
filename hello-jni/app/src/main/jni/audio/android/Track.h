@@ -61,7 +61,22 @@ public:
     inline void setName(int name) { _name = name; };
     inline int getName() const { return _name; };
 
+    void setVolume(float volume);
+    float getVolume() const;
+
+    inline void setVolumeDirty(bool isDirty)
+    { _isVolumeDirty = isDirty; };
+
+    inline bool isVolumeDirty() const
+    { return _isVolumeDirty; };
+
+    bool setPosition(float pos);
+    float getPosition() const;
+
     virtual gain_minifloat_packed_t getVolumeLR() override ;
+
+    inline void setLoop(bool isLoop) { _isLoop = isLoop; };
+    inline bool isLoop() const { return _isLoop; };
 
     std::function<void(State)> onStateChanged;
 
@@ -69,7 +84,9 @@ private:
     const PcmData& _pcmData;
     State _state;
     int _name;
-
+    float _volume;
+    bool _isVolumeDirty;
+    bool _isLoop;
 };
 
 } // namespace cocos2d {
