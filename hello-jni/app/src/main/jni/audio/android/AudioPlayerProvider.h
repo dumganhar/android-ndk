@@ -38,12 +38,14 @@ class PcmAudioPlayer;
 class PcmAudioService;
 class UrlAudioPlayer;
 class AudioMixerController;
+class ICallerThreadUtils;
 
 class AudioPlayerProvider
 {
 public:
     AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outputMixObject, int deviceSampleRate,
-                        int bufferSizeInFrames, const FdGetterCallback &fdGetterCallback);
+                        int bufferSizeInFrames, const FdGetterCallback &fdGetterCallback,
+                        ICallerThreadUtils* callerThreadUtils);
 
     virtual ~AudioPlayerProvider();
 
@@ -93,10 +95,12 @@ private:
     int _deviceSampleRate;
     int _bufferSizeInFrames;
     FdGetterCallback _fdGetterCallback;
+    ICallerThreadUtils* _callerThreadUtils;
+
     std::unordered_map<std::string, PcmData> _pcmCache;
 
     PcmAudioService* _pcmAudioService;
-    AudioMixerController * _audioFlinger;
+    AudioMixerController *_mixController;
 };
 
 } //namespace cocos2d {

@@ -25,30 +25,27 @@ THE SOFTWARE.
 #define LOG_TAG "UrlAudioPlayer"
 
 #include "audio/android/UrlAudioPlayer.h"
+#include "audio/android/ICallerThreadUtils.h"
 
 #include <math.h>
 #include <algorithm> // for std::find
 
 namespace cocos2d {
 
-static std::vector<UrlAudioPlayer *> __stoppedPlayers;
-static std::vector<UrlAudioPlayer *> __playOverPlayers;
 static std::vector<UrlAudioPlayer *> __allPlayers;
 
-static std::mutex __playOverMutex;
 static std::once_flag __onceFlag;
 static int __instanceCount = 0;
 
-UrlAudioPlayer::UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject)
-        : _engineItf(engineItf), _outputMixObj(outputMixObject), _id(-1), _assetFd(0),
+UrlAudioPlayer::UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject, ICallerThreadUtils* callerThreadUtils)
+        : _engineItf(engineItf), _outputMixObj(outputMixObject),
+          _callerThreadUtils(callerThreadUtils), _id(-1), _assetFd(0),
           _playObj(nullptr), _playItf(nullptr), _seekItf(nullptr), _volumeItf(nullptr),
           _volume(0.0f), _isLoop(false), _duration(0.0f), _state(State::INVALID),
           _isDestroyed(false), _playEventCallback(nullptr)
 {
     std::call_once(__onceFlag, []() {
         ALOGV("Initializing static variables in UrlAudioPlayer ...");
-        __stoppedPlayers.reserve(16);
-        __playOverPlayers.reserve(16);
         __allPlayers.reserve(16);
     });
     ++__instanceCount;
@@ -96,9 +93,13 @@ void UrlAudioPlayer::playEventCallback(SLPlayItf caller, SLuint32 playEvent)
             {
                 _playEventCallback(State::OVER);
             }
-            __playOverMutex.lock();
-            __playOverPlayers.push_back(this);
-            __playOverMutex.unlock();
+
+            _callerThreadUtils->performFunctionInCallerThread([this](){
+                ALOGV("UrlAudioPlayer (%p) played over, destroy self ...", this);
+                destroy();
+                // Delete self in caller's thread asynchronously
+                delete this;
+            });
         }
     }
 }
@@ -127,7 +128,7 @@ void UrlAudioPlayer::stop()
         }
 
         destroy();
-        __stoppedPlayers.push_back(this);
+        delete this;
     }
 }
 
@@ -214,7 +215,7 @@ bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, int a
     _url = url;
     _assetFd = assetFd;
 
-    ALOGV("UrlAudioPlayer::prepare: %s, %u, %d, %d, %d", _url.c_str(), locatorType, assetFd, start,
+    ALOGV("UrlAudioPlayer::prepare: %s, %d, %d, %d, %d", _url.c_str(), (int)locatorType, assetFd, start,
          length);
     SLDataSource audioSrc;
 
@@ -239,11 +240,11 @@ bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, int a
     {
         locUri = {locatorType, (SLchar *) _url.c_str()};
         audioSrc.pLocator = &locUri;
-        ALOGV("locUri: locatorType: %d", locUri.locatorType);
+        ALOGV("locUri: locatorType: %d", (int)locUri.locatorType);
     }
     else
     {
-        ALOGE("Oops, invalid locatorType: %d", locatorType);
+        ALOGE("Oops, invalid locatorType: %d", (int)locatorType);
         return false;
     }
 
@@ -312,32 +313,6 @@ void UrlAudioPlayer::setLoop(bool isLoop)
 bool UrlAudioPlayer::isLoop() const
 {
     return _isLoop;
-}
-
-void UrlAudioPlayer::update()
-{
-    __playOverMutex.lock();
-    if (!__playOverPlayers.empty())
-    {
-        ALOGV("UrlAudioPlayer::update, clear playOver players!");
-        for (auto player : __playOverPlayers)
-        {
-            player->destroy();
-            delete player;
-        }
-        __playOverPlayers.clear();
-    }
-    __playOverMutex.unlock();
-
-    if (!__stoppedPlayers.empty())
-    {
-        ALOGV("UrlAudioPlayer::update, clear stopped players!");
-        for (auto player : __stoppedPlayers)
-        {
-            delete player;
-        }
-        __stoppedPlayers.clear();
-    }
 }
 
 void UrlAudioPlayer::stopAll()

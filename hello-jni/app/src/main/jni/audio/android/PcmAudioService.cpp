@@ -46,7 +46,7 @@ public:
 PcmAudioService::PcmAudioService(SLEngineItf engineItf, SLObjectItf outputMixObject)
         : _engineItf(engineItf), _outputMixObj(outputMixObject), _playObj(nullptr),
           _playItf(nullptr), _volumeItf(nullptr), _bufferQueueItf(nullptr), _numChannels(-1),
-          _sampleRate(-1), _bufferSizeInBytes(0), _flinger(nullptr)
+          _sampleRate(-1), _bufferSizeInBytes(0), _controller(nullptr)
 {
     _lastEnqueueTime = clockNow();
 }
@@ -60,9 +60,9 @@ PcmAudioService::~PcmAudioService()
 
 bool PcmAudioService::enqueue()
 {
-    auto nowTime = clockNow();
+//    auto nowTime = clockNow();
 //    ALOGV("enqueue cycle wastes: %fms", intervalInMS(_lastEnqueueTime, nowTime));
-    if (_flinger->hasPlayingTacks())
+    if (_controller->hasPlayingTacks())
     {
         // Don't need to check all buffers
 //        if (_flinger->isAllBuffersFull())
@@ -71,31 +71,35 @@ bool PcmAudioService::enqueue()
 //        }
         bool needWait = false;
         auto oldTime = clockNow();
-        while (!_flinger->isCurrentBufferFull() && !_flinger->isPaused())
-        {
-            needWait = true;
-            usleep(100);
-        }
+//        while (!_flinger->isCurrentBufferFull() && !_flinger->isPaused())
+//        {
+//            needWait = true;
+//            usleep(100);
+//        }
+//
+//        if (needWait)
+//        {
+//            auto newTime = clockNow();
+//            float waitingMS = intervalInMS(oldTime, newTime);
+//            ALOGW_IF(waitingMS > 1.0f, "PcmAudioService waits mixing %fms", waitingMS);
+//        }
 
-        if (needWait)
-        {
-            auto newTime = clockNow();
-            ALOGW("PcmAudioService waits mixing %fms", intervalInMS(oldTime, newTime));
-        }
-
-        if (_flinger->isPaused())
+        if (_controller->isPaused())
         {
             SLresult r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, __silenceData.data(), __silenceData.size());
             SL_RETURN_VAL_IF_FAILED(r, false, "enqueue silent data failed!");
         }
         else
         {
-            auto current = _flinger->current();
+//            ALOGV("mix one frame ...");
+            _controller->mixOneFrame();
+
+            auto current = _controller->current();
             ALOG_ASSERT(current != nullptr, "current buffer is nullptr ...");
             SLresult r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, current->buf, current->size);
             SL_RETURN_VAL_IF_FAILED(r, false, "enqueue failed!");
 
-            _flinger->switchBuffers();
+//            _flinger->switchBuffers();
         }
     }
     else
@@ -103,7 +107,7 @@ bool PcmAudioService::enqueue()
         SLresult r = (*_bufferQueueItf)->Enqueue(_bufferQueueItf, __silenceData.data(), __silenceData.size());
         SL_RETURN_VAL_IF_FAILED(r, false, "enqueue silent data failed!");
     }
-    _lastEnqueueTime = clockNow();
+//    _lastEnqueueTime = clockNow();
     return true;
 }
 
@@ -114,9 +118,9 @@ void PcmAudioService::bqFetchBufferCallback(SLAndroidSimpleBufferQueueItf bq)
     enqueue();
 }
 
-bool PcmAudioService::init(AudioMixerController * flinger, int numChannels, int sampleRate, int bufferSizeInBytes)
+bool PcmAudioService::init(AudioMixerController* controller, int numChannels, int sampleRate, int bufferSizeInBytes)
 {
-    _flinger = flinger;
+    _controller = controller;
     _numChannels = numChannels;
     _sampleRate = sampleRate;
     _bufferSizeInBytes = bufferSizeInBytes;

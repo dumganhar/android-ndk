@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include "audio/android/OpenSLHelper.h"
 
 #include <algorithm>
+#include <stdlib.h> // for posix_memalign
 
 namespace cocos2d {
 
@@ -37,22 +38,23 @@ AudioMixerController::AudioMixerController(int bufferSizeInFrames, int sampleRat
         : _bufferSizeInFrames(bufferSizeInFrames)
         , _sampleRate(sampleRate)
         , _channelCount(channelCount)
-        , _mixingThread(nullptr)
+//        , _mixingThread(nullptr)
         , _mixer(nullptr)
         , _isDestroy(false)
         , _isPaused(false)
 {
+    ALOGV("In the constructor of AudioMixerController!");
     for (int i = 0; i < ARRAY_SIZE(_buffers); ++i)
     {
         _buffers[i].size = (size_t) bufferSizeInFrames * 2 * channelCount;
         posix_memalign(&_buffers[i].buf, 32, _buffers[i].size);
         memset(_buffers[i].buf, 0, _buffers[i].size);
-        _buffers[i].state = BufferState::EMPTY;
+//        _buffers[i].state = BufferState::EMPTY;
     }
 
-    _busy = &_buffers[0];
-    _current = &_buffers[1];
-    _next = &_buffers[2];
+//    _busy = &_buffers[0];
+    _current = &_buffers[0];
+//    _next = &_buffers[2];
 //    _afterNext = &_buffers[3];
     _mixing = nullptr;
 }
@@ -60,12 +62,12 @@ AudioMixerController::AudioMixerController(int bufferSizeInFrames, int sampleRat
 AudioMixerController::~AudioMixerController()
 {
     destroy();
-    if (_mixingThread != nullptr)
-    {
-        _mixingThread->join();
-        delete _mixingThread;
-        _mixingThread = nullptr;
-    }
+//    if (_mixingThread != nullptr)
+//    {
+//        _mixingThread->join();
+//        delete _mixingThread;
+//        _mixingThread = nullptr;
+//    }
 
     if (_mixer != nullptr)
     {
@@ -82,7 +84,7 @@ AudioMixerController::~AudioMixerController()
 bool AudioMixerController::init()
 {
     _mixer = new (std::nothrow) AudioMixer(_bufferSizeInFrames, _sampleRate);
-    _mixingThread = new (std::nothrow) std::thread(&AudioMixerController::mixingThreadLoop, this);
+//    _mixingThread = new (std::nothrow) std::thread(&AudioMixerController::mixingThreadLoop, this);
     return true;
 }
 
@@ -96,7 +98,7 @@ bool AudioMixerController::addTrack(Track* track)
     if (iter == _activeTracks.end())
     {
         _activeTracks.push_back(track);
-        _mixingCondition.notify_one();
+//        _mixingCondition.notify_one();
         ret = true;
     }
 
@@ -113,70 +115,33 @@ static void removeItemFromVector(std::vector<T>& v, T item)
     }
 }
 
-void AudioMixerController::mixingThreadLoop()
+void AudioMixerController::mixOneFrame()
 {
-    auto doWait = [this](){
-        std::unique_lock<std::mutex> lk(_mixingMutex);
-        _switchMutex.unlock();
-        _activeTracksMutex.unlock();
+    _isMixingFrame = true;
+//    _switchMutex.lock();
+    _activeTracksMutex.lock();
 
-        _mixingCondition.wait(lk);
+    auto mixStart = clockNow();
 
-        _switchMutex.lock();
-        _activeTracksMutex.lock();
-    };
-
-    for (;;)
+//    if (_current->state == BufferState ::EMPTY)
     {
-        ALOGV("AudioMixerController::mixingThreadLoop()");
+        _mixing = _current;
+    }
+//    else if (_next->state == BufferState::EMPTY)
+//    {
+//        _mixing = _next;
+//    }
+//    else if (_afterNext->state == BufferState::EMPTY)
+//    {
+//        _mixing = _afterNext;
+//    }
 
+//    _switchMutex.unlock();
 
-        _switchMutex.lock();
-        _activeTracksMutex.lock();
+    std::vector<Track*> tracksToRemove;
+    tracksToRemove.reserve(_activeTracks.size());
 
-        if (_isPaused)
-        {
-            doWait();
-        }
-
-        if (_activeTracks.empty())
-        {
-            doWait();
-        }
-
-        if  (_current->state == BufferState::FULL && _next->state == BufferState::FULL)//cjh && _afterNext->state == BufferState::FULL)
-        {
-            ALOGV("Yeah, all buffers are full, waiting ...");
-            doWait();
-        }
-
-        if (_isDestroy)
-        {
-            _switchMutex.unlock();
-            _activeTracksMutex.unlock();
-            _isDestroy = false;
-            return;
-        }
-
-        if (_current->state == BufferState ::EMPTY)
-        {
-            _mixing = _current;
-        }
-        else if (_next->state == BufferState::EMPTY)
-        {
-            _mixing = _next;
-        }
-//        else if (_afterNext->state == BufferState::EMPTY)
-//        {
-//            _mixing = _afterNext;
-//        }
-
-        _switchMutex.unlock();
-
-        std::vector<Track*> tracksToRemove;
-        tracksToRemove.reserve(_activeTracks.size());
-
-        // FOR TESTING BEGIN
+    // FOR TESTING BEGIN
 //        Track* track = _activeTracks[0];
 //
 //        AudioBufferProvider::Buffer buffer;
@@ -200,184 +165,228 @@ void AudioMixerController::mixingThreadLoop()
 //
 //        _mixing->state = BufferState::FULL;
 //        _activeTracksMutex.unlock();
-        // FOR TESTING END
+    // FOR TESTING END
 
-        Track::State state;
-        // set up the tracks.
-        for (Track* track : _activeTracks)
+    Track::State state;
+    // set up the tracks.
+    for (Track* track : _activeTracks)
+    {
+        state = track->getState();
+
+        if (state == Track::State::IDLE)
         {
-            state = track->getState();
-
-            if (state == Track::State::IDLE)
+            uint32_t channelMask = audio_channel_out_mask_from_count(2);
+            int32_t name = _mixer->getTrackName(channelMask, AUDIO_FORMAT_PCM_16_BIT,
+                                                AUDIO_SESSION_OUTPUT_MIX);
+            if (name < 0)
             {
-                uint32_t channelMask = audio_channel_out_mask_from_count(2);
-                int32_t name = _mixer->getTrackName(channelMask, AUDIO_FORMAT_PCM_16_BIT,
-                                                    AUDIO_SESSION_OUTPUT_MIX);
-                if (name < 0)
-                {
-                    // If we could not get the track name, it means that there're MAX_NUM_TRACKS tracks
-                    // So ignore the new track.
-                    tracksToRemove.push_back(track);
-                }
-                else
-                {
-                    _mixer->setBufferProvider(name, track);
-                    _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER,
-                                         _mixing->buf);
-                    _mixer->setParameter(
-                            name,
-                            AudioMixer::TRACK,
-                            AudioMixer::MIXER_FORMAT,
-                            (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
-                    _mixer->setParameter(
-                            name,
-                            AudioMixer::TRACK,
-                            AudioMixer::FORMAT,
-                            (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
-                    _mixer->setParameter(
-                            name,
-                            AudioMixer::TRACK,
-                            AudioMixer::MIXER_CHANNEL_MASK,
-                            (void *) (uintptr_t) channelMask);
-                    _mixer->setParameter(
-                            name,
-                            AudioMixer::TRACK,
-                            AudioMixer::CHANNEL_MASK,
-                            (void *) (uintptr_t) channelMask);
+                // If we could not get the track name, it means that there're MAX_NUM_TRACKS tracks
+                // So ignore the new track.
+                tracksToRemove.push_back(track);
+            }
+            else
+            {
+                _mixer->setBufferProvider(name, track);
+                _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER,
+                                     _mixing->buf);
+                _mixer->setParameter(
+                        name,
+                        AudioMixer::TRACK,
+                        AudioMixer::MIXER_FORMAT,
+                        (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
+                _mixer->setParameter(
+                        name,
+                        AudioMixer::TRACK,
+                        AudioMixer::FORMAT,
+                        (void *) (uintptr_t) AUDIO_FORMAT_PCM_16_BIT);
+                _mixer->setParameter(
+                        name,
+                        AudioMixer::TRACK,
+                        AudioMixer::MIXER_CHANNEL_MASK,
+                        (void *) (uintptr_t) channelMask);
+                _mixer->setParameter(
+                        name,
+                        AudioMixer::TRACK,
+                        AudioMixer::CHANNEL_MASK,
+                        (void *) (uintptr_t) channelMask);
 
+                gain_minifloat_packed_t volume = track->getVolumeLR();
+                float lVolume = float_from_gain(gain_minifloat_unpack_left(volume));
+                float rVolume = float_from_gain(gain_minifloat_unpack_right(volume));
+
+                _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &lVolume);
+                _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &rVolume);
+                _mixer->enable(name);
+
+                track->setState(Track::State::PLAYING);
+                track->setName(name);
+                track->setVolumeDirty(false);
+            }
+        }
+        else
+        {
+            ALOG_ASSERT(track->getName() >= 0);
+
+            if (state == Track::State::PLAYING)
+            {
+                int name = track->getName();
+                // If we don't use multiple buffers, no need to reset the MAIN_BUFFER for mixer.
+//                _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER, _mixing->buf);
+                if (track->isVolumeDirty())
+                {
                     gain_minifloat_packed_t volume = track->getVolumeLR();
                     float lVolume = float_from_gain(gain_minifloat_unpack_left(volume));
                     float rVolume = float_from_gain(gain_minifloat_unpack_right(volume));
 
+                    ALOGV("Track (name: %d)'s volume is dirty, update volume to L: %f, R: %f", name, lVolume, rVolume);
+
                     _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &lVolume);
                     _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &rVolume);
-                    _mixer->enable(name);
 
-                    track->setState(Track::State::PLAYING);
-                    track->setName(name);
                     track->setVolumeDirty(false);
                 }
             }
-            else
+            else if (state == Track::State::RESUMED)
             {
-                ALOG_ASSERT(track->getName() >= 0);
+                _mixer->enable(track->getName());
+                track->setState(Track::State::PLAYING);
+            }
+            else if (state == Track::State::PAUSED)
+            {
+                _mixer->disable(track->getName());
+            }
+            else if (state == Track::State::STOPPED)
+            {
+                _mixer->deleteTrackName(track->getName());
+                tracksToRemove.push_back(track);
+            }
 
-                if (state == Track::State::PLAYING)
+            if (track->isPlayOver())
+            {
+                if (track->isLoop())
                 {
-                    int name = track->getName();
-                    _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER, _mixing->buf);
-                    if (track->isVolumeDirty())
-                    {
-                        gain_minifloat_packed_t volume = track->getVolumeLR();
-                        float lVolume = float_from_gain(gain_minifloat_unpack_left(volume));
-                        float rVolume = float_from_gain(gain_minifloat_unpack_right(volume));
-
-                        _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &lVolume);
-                        _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &rVolume);
-
-                        track->setVolumeDirty(false);
-                    }
+                    track->reset();
                 }
-                else if (state == Track::State::RESUMED)
+                else
                 {
-                    _mixer->enable(track->getName());
-                    track->setState(Track::State::PLAYING);
-                }
-                else if (state == Track::State::PAUSED)
-                {
-                    _mixer->disable(track->getName());
-                }
-                else if (state == Track::State::STOPPED)
-                {
+                    ALOGV("Play over ...");
                     _mixer->deleteTrackName(track->getName());
                     tracksToRemove.push_back(track);
-                }
-
-                if (track->isPlayOver())
-                {
-                    if (track->isLoop())
-                    {
-                        track->reset();
-                    }
-                    else
-                    {
-                        ALOGV("Play over ...");
-                        _mixer->deleteTrackName(track->getName());
-                        tracksToRemove.push_back(track);
-                        track->setState(Track::State::OVER);
-                    }
+                    track->setState(Track::State::OVER);
                 }
             }
         }
-
-        bool hasAvailableTracks = _activeTracks.size() - tracksToRemove.size() > 0;
-        _activeTracksMutex.unlock();
-
-        if (hasAvailableTracks)
-        {
-            ALOGV("active tracks: %d", (int) _activeTracks.size());
-            auto oldTime = clockNow();
-            _mixer->process(AudioBufferProvider::kInvalidPTS);
-            auto newTime = clockNow();
-            ALOGV("mixing waste: %fms", intervalInMS(oldTime, newTime));
-            _mixing->state = BufferState::FULL;
-            ALOGV("mixer process end");
-        }
-        else
-        {
-            ALOGV("Doesn't have enough tracks: %d, %d", (int) _activeTracks.size(), (int) tracksToRemove.size());
-        }
-
-        _activeTracksMutex.lock();
-
-        // Remove stopped or playover tracks for active tracks container
-        for (Track* track : tracksToRemove)
-        {
-            removeItemFromVector(_activeTracks, track);
-            if (track->onStateChanged != nullptr)
-            {
-                track->onStateChanged(Track::State::DESTROYED);
-            }
-        }
-
-        _activeTracksMutex.unlock();
     }
+
+    bool hasAvailableTracks = _activeTracks.size() - tracksToRemove.size() > 0;
+//    _activeTracksMutex.unlock();
+
+    if (hasAvailableTracks)
+    {
+        ALOGV_IF(_activeTracks.size() > 8,  "More than 8 active tracks: %d", (int) _activeTracks.size());
+        _mixer->process(AudioBufferProvider::kInvalidPTS);
+//        _mixing->state = BufferState::FULL;
+    }
+    else
+    {
+        ALOGV("Doesn't have enough tracks: %d, %d", (int) _activeTracks.size(), (int) tracksToRemove.size());
+    }
+
+//    _activeTracksMutex.lock();
+
+    // Remove stopped or playover tracks for active tracks container
+    for (Track* track : tracksToRemove)
+    {
+        removeItemFromVector(_activeTracks, track);
+        if (track->onStateChanged != nullptr)
+        {
+            track->onStateChanged(Track::State::DESTROYED);
+        }
+    }
+
+    _activeTracksMutex.unlock();
+
+    auto mixEnd = clockNow();
+    float mixInterval = intervalInMS(mixStart, mixEnd);
+    ALOGV_IF(mixInterval > 1.0f, "Mix a frame waste: %fms", mixInterval);
+
+    _isMixingFrame = false;
 }
 
-void AudioMixerController::switchBuffers()
-{
-    ALOGV("AudioMixerController::switchBuffers ...");
-    _switchMutex.lock();
-    OutputBuffer* tmp = _busy;
-    _busy = _current; _busy->state = BufferState::BUSY;
-    _current = _next; // Don't change current state
-    _next = tmp; _next->state = BufferState::EMPTY; //_afterNext; // Don't change next state
+//void AudioMixerController::mixingThreadLoop()
+//{
+//    auto doWait = [this](){
+//        std::unique_lock<std::mutex> lk(_mixingMutex);
+//        _switchMutex.unlock();
+//        _activeTracksMutex.unlock();
+//
+//        _mixingCondition.wait(lk);
+//
+//        _switchMutex.lock();
+//        _activeTracksMutex.lock();
+//    };
+//
+//    for (;;)
+//    {
+//        _switchMutex.lock();
+//        _activeTracksMutex.lock();
+//
+//        if (_isPaused)
+//        {
+//            doWait();
+//        }
+//
+//        if (_activeTracks.empty())
+//        {
+//            doWait();
+//        }
+//
+//        if  (_current->state == BufferState::FULL && _next->state == BufferState::FULL && _afterNext->state == BufferState::FULL)
+//        {
+//            ALOGD("Yeah, all buffers are full, waiting ...");
+//            doWait();
+//        }
+//
+//        if (_isDestroy)
+//        {
+//            _switchMutex.unlock();
+//            _activeTracksMutex.unlock();
+//            _isDestroy = false;
+//            return;
+//        }
+//
+////       mixOneFrame();
+//    }
+//}
+//
+//void AudioMixerController::switchBuffers()
+//{
+//    ALOGD("AudioMixerController::switchBuffers ...");
+//    _switchMutex.lock();
+//    OutputBuffer* tmp = _busy;
+//    _busy = _current; _busy->state = BufferState::BUSY;
+//    _current = _next; // Don't change current state
+//    _next = _afterNext; // Don't change next state
 //    _afterNext = tmp; _afterNext->state = BufferState::EMPTY;
-    _switchMutex.unlock();
-
-    _mixingCondition.notify_one();
-}
+//    _switchMutex.unlock();
+//
+//    _mixingCondition.notify_one();
+//    _current->state = BufferState::EMPTY;
+//}
 
 void AudioMixerController::destroy()
 {
-    _isDestroy = true;
-    while(_isDestroy)
+//    _isDestroy = true;
+//    while(_isDestroy)
+//    {
+//        _mixingCondition.notify_one();
+//        usleep(100);
+//    }
+    while (_isMixingFrame)
     {
-        _mixingCondition.notify_one();
-        usleep(100);
+        usleep(10);
     }
-}
-
-bool AudioMixerController::isCurrentBufferFull()
-{
-    std::lock_guard<std::mutex> lk(_switchMutex);
-    return _current->state == BufferState::FULL;
-}
-
-bool AudioMixerController::hasActiveTracks()
-{
-    std::lock_guard<std::mutex> lk(_activeTracksMutex);
-    return !_activeTracks.empty();
+    usleep(2000); // Wait for more 2ms
 }
 
 void AudioMixerController::pause()
@@ -388,13 +397,7 @@ void AudioMixerController::pause()
 void AudioMixerController::resume()
 {
     _isPaused = false;
-    _mixingCondition.notify_one();
-}
-
-bool AudioMixerController::isAllBuffersFull()
-{
-    std::lock_guard<std::mutex> lk(_switchMutex);
-    return _current->state == BufferState::FULL && _next->state == BufferState::FULL/* && _afterNext->state == BufferState::FULL*/;
+//    _mixingCondition.notify_one();
 }
 
 bool AudioMixerController::hasPlayingTacks()
@@ -406,7 +409,7 @@ bool AudioMixerController::hasPlayingTacks()
     for (Track* track : _activeTracks)
     {
         Track::State state = track->getState();
-        if (state == Track::State::PLAYING || state == Track::State::RESUMED)
+        if (state == Track::State::IDLE || state == Track::State::PLAYING || state == Track::State::RESUMED)
         {
             return true;
         }

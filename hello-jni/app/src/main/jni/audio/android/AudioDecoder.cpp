@@ -320,7 +320,7 @@ bool AudioDecoder::start(const FdGetterCallback &fdGetterCallback)
         ALOGV("Content duration is unknown\n");
     } else
     {
-        ALOGV("Content duration is %ums\n", durationInMsec);
+        ALOGV("Content duration is %dms\n", (int)durationInMsec);
     }
 
     /* ------------------------------------------------------ */
@@ -351,7 +351,7 @@ bool AudioDecoder::start(const FdGetterCallback &fdGetterCallback)
 
             SL_RETURN_VAL_IF_FAILED(result, false, "GetKey(%d) failed", i);
 
-            ALOGV("key[%d] size=%d, name=%s \tvalue size=%d \n",
+            ALOGV("key[%d] size=%d, name=%s, value size=%d",
                   i, keyInfo->size, keyInfo->data, valueSize);
             /* find out the key index of the metadata we're interested in */
             if (!strcmp((char *) keyInfo->data, ANDROID_KEY_PCMFORMAT_NUMCHANNELS))

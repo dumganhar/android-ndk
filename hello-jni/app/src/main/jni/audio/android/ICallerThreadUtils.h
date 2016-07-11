@@ -21,66 +21,22 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
+#ifndef COCOS_ICALLERTHREADUTILS_H
+#define COCOS_ICALLERTHREADUTILS_H
 
-#ifndef COCOS_PCMAUDIOSERVICE_H
-#define COCOS_PCMAUDIOSERVICE_H
-
-#include "audio/android/IAudioPlayer.h"
-#include "audio/android/OpenSLHelper.h"
-#include "audio/android/PcmData.h"
-
-#include <mutex>
-#include <condition_variable>
+#include <functional>
 
 namespace cocos2d {
 
-class AudioMixerController;
-
-class PcmAudioService
+class ICallerThreadUtils
 {
 public:
-    inline int getChannelCount() const
-    { return _numChannels; };
+    virtual ~ICallerThreadUtils()
+    { };
 
-    inline int getSampleRate() const
-    { return _sampleRate; };
-
-private:
-    PcmAudioService(SLEngineItf engineItf, SLObjectItf outputMixObject);
-
-    virtual ~PcmAudioService();
-
-    bool init(AudioMixerController* controller, int numChannels, int sampleRate, int bufferSizeInBytes);
-
-    bool enqueue();
-
-    void bqFetchBufferCallback(SLAndroidSimpleBufferQueueItf bq);
-
-    void pause();
-    void resume();
-
-private:
-    SLEngineItf _engineItf;
-    SLObjectItf _outputMixObj;
-
-    SLObjectItf _playObj;
-    SLPlayItf _playItf;
-    SLVolumeItf _volumeItf;
-    SLAndroidSimpleBufferQueueItf _bufferQueueItf;
-
-    int _numChannels;
-    int _sampleRate;
-    int _bufferSizeInBytes;
-
-    AudioMixerController* _controller;
-
-    std::chrono::high_resolution_clock::time_point _lastEnqueueTime;
-
-    friend class SLPcmAudioPlayerCallbackProxy;
-
-    friend class AudioPlayerProvider;
+    virtual void performFunctionInCallerThread(const std::function<void()>& func) = 0;
 };
 
 } // namespace cocos2d {
 
-#endif //COCOS_PCMAUDIOSERVICE_H
+#endif //COCOS_ICALLERTHREADUTILS_H

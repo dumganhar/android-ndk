@@ -9,6 +9,7 @@
 
 #include <set>
 #include <chrono>
+#include <audio/android/ICallerThreadUtils.h>
 #include "audio/android/cutils/log.h"
 
 #define LOG_TAG "audio.cpp"
@@ -83,7 +84,16 @@ AUDIO_FUNC(jniCreate)(JNIEnv *env, jclass clazz, jint sampleRate, jint bufferSiz
     res = (*engine.engine)->CreateOutputMix(engine.engine, &output.object, 0, NULL, NULL);
     res = (*output.object)->Realize(output.object, SL_BOOLEAN_FALSE);
 
-    __audioPlayerProvider = new (std::nothrow) AudioPlayerProvider(engine.engine, output.object, sampleRate, bufferSizeInFrames, fdGetter);
+    class CallerThreadUtils : public ICallerThreadUtils
+    {
+    public:
+        virtual void performFunctionInCallerThread(const std::function<void()>& func) {
+            func();
+        };
+    };
+    static CallerThreadUtils __callerThreadUtils;
+
+    __audioPlayerProvider = new (std::nothrow) AudioPlayerProvider(engine.engine, output.object, sampleRate, bufferSizeInFrames, fdGetter, &__callerThreadUtils);
 
     return JNI_TRUE;
 }

@@ -63,7 +63,7 @@ float Track::getPosition() const
 
 void Track::setVolume(float volume)
 {
-    if (fabs(_volume - volume) < 0.00001)
+    if (fabs(_volume - volume) > 0.00001)
     {
         _volume = volume;
         setVolumeDirty(true);

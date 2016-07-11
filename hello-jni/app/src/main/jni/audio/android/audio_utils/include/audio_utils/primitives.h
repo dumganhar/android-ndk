@@ -596,8 +596,8 @@ static inline uint8_t clamp8_from_float(float f)
 static inline int32_t clamp24_from_float(float f)
 {
     static const float scale = (float)(1 << 23);
-    static const float limpos = 0x7fffff / scale;
-    static const float limneg = -0x800000 / scale;
+    static const float limpos = 0x7fffff / (float)(1 << 23);
+    static const float limneg = -0x800000 / (float)(1 << 23);
 
     if (f <= limneg) {
         return -0x800000;
@@ -739,7 +739,7 @@ static inline float float_from_u4_12(uint16_t uval)
 static inline uint32_t u4_28_from_float(float f)
 {
     static const float scale = (float)(1 << 28);
-    static const float limpos = 0xffffffffUL / scale;
+    static const float limpos = 0xffffffffUL / (float)(1 << 28);
 
     if (f <= 0.) {
         return 0;
@@ -762,7 +762,7 @@ static inline uint32_t u4_28_from_float(float f)
 static inline uint16_t u4_12_from_float(float f)
 {
     static const float scale = (float)(1 << 12);
-    static const float limpos = 0xffff / scale;
+    static const float limpos = 0xffff / (float)(1 << 12);
 
     if (f <= 0.) {
         return 0;

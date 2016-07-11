@@ -41,6 +41,20 @@ class AudioMixer;
 class AudioMixerController
 {
 public:
+//    enum class BufferState
+//    {
+//        BUSY,
+//        EMPTY,
+//        FULL
+//    };
+
+    struct OutputBuffer
+    {
+        void* buf;
+        size_t size;
+//        BufferState state;
+    };
+
     AudioMixerController(int bufferSizeInFrames, int sampleRate, int channelCount);
 
     ~AudioMixerController();
@@ -48,62 +62,65 @@ public:
     bool init();
 
     bool addTrack(Track *track);
-    void switchBuffers();
-    bool hasActiveTracks();
-    bool isCurrentBufferFull();
-    bool isAllBuffersFull();
+//    void switchBuffers();
+
+//    inline bool hasActiveTracks()
+//    {
+//        std::lock_guard<std::mutex> lk(_activeTracksMutex);
+//        return !_activeTracks.empty();
+//    }
+//    inline bool isCurrentBufferFull()
+//    {
+////        std::lock_guard<std::mutex> lk(_switchMutex);
+//        return _current->state == BufferState::FULL;
+//    }
+//
+//    inline bool isAllBuffersFull()
+//    {
+////        std::lock_guard<std::mutex> lk(_switchMutex);
+//        return _current->state == BufferState::FULL;// && _next->state == BufferState::FULL && _afterNext->state == BufferState::FULL;
+//    }
+
     bool hasPlayingTacks();
 
     void pause();
     void resume();
     inline bool isPaused() const { return _isPaused; };
 
-    enum class BufferState
-    {
-        BUSY,
-        EMPTY,
-        FULL
-    };
-
-    struct OutputBuffer
-    {
-        void* buf;
-        size_t size;
-        BufferState state;
-    };
+    void mixOneFrame();
 
     inline OutputBuffer* current() { return _current; }
 
 private:
     void destroy();
-    void mixingThreadLoop();
+//    void mixingThreadLoop();
 
 private:
     int _bufferSizeInFrames;
     int _sampleRate;
     int _channelCount;
 
-    std::thread* _mixingThread;
+//    std::thread* _mixingThread;
 
-    std::mutex _mixingMutex;
-    std::condition_variable _mixingCondition;
+//    std::mutex _mixingMutex;
+//    std::condition_variable _mixingCondition;
 
     AudioMixer* _mixer;
 
     std::mutex _activeTracksMutex;
     std::vector<Track*> _activeTracks;
-    std::mutex _switchMutex;
+//    std::mutex _switchMutex;
 
-    OutputBuffer _buffers[3];
-    OutputBuffer* _busy;
+    OutputBuffer _buffers[1];
     OutputBuffer* _current;
-    OutputBuffer* _next;
+//    OutputBuffer* _next;
 //    OutputBuffer* _afterNext;
 
     OutputBuffer* _mixing;
 
     std::atomic_bool _isDestroy;
     std::atomic_bool _isPaused;
+    std::atomic_bool _isMixingFrame;
 };
 
 } // namespace cocos2d {

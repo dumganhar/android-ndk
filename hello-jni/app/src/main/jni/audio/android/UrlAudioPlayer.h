@@ -32,10 +32,11 @@ THE SOFTWARE.
 
 namespace cocos2d {
 
+class ICallerThreadUtils;
+
 class UrlAudioPlayer : public IAudioPlayer
 {
 public:
-    virtual ~UrlAudioPlayer();
 
     // Override Functions Begin
     virtual int getId() const override
@@ -79,9 +80,8 @@ public:
     // Override Functions EndOv
 
 private:
-    static void update();
-
-    UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject);
+    UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject, ICallerThreadUtils* callerThreadUtils);
+    virtual ~UrlAudioPlayer();
 
     bool prepare(const std::string &url, SLuint32 locatorType, int assetFd, int start, int length);
 
@@ -97,6 +97,7 @@ private:
 private:
     SLEngineItf _engineItf;
     SLObjectItf _outputMixObj;
+    ICallerThreadUtils* _callerThreadUtils;
 
     int _id;
     std::string _url;

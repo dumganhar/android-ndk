@@ -32,13 +32,12 @@ THE SOFTWARE.
 
 namespace cocos2d {
 
+class ICallerThreadUtils;
 class AudioMixerController;
 
 class PcmAudioPlayer : public IAudioPlayer
 {
 public:
-    PcmAudioPlayer(AudioMixerController * controller);
-    virtual ~PcmAudioPlayer();
 
     bool prepare(const std::string &url, const PcmData &decResult);
 
@@ -79,9 +78,9 @@ public:
 
     // Override Functions End
 
-
-
 private:
+    PcmAudioPlayer(AudioMixerController * controller, ICallerThreadUtils* callerThreadUtils);
+    virtual ~PcmAudioPlayer();
 
     void setState(State state);
 
@@ -99,6 +98,9 @@ private:
     PlayEventCallback _playEventCallback;
 
     AudioMixerController * _controller;
+    ICallerThreadUtils* _callerThreadUtils;
+
+    friend class AudioPlayerProvider;
 };
 
 } //namespace cocos2d {

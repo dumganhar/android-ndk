@@ -77,36 +77,36 @@ static AudioFileIndicator __audioFileIndicator[] = {
 
 AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outputMixObject,
                                          int deviceSampleRate, int bufferSizeInFrames,
-                                         const FdGetterCallback &fdGetterCallback)
+                                         const FdGetterCallback &fdGetterCallback,
+                                         ICallerThreadUtils* callerThreadUtils)
         : _engineItf(engineItf), _outputMixObject(outputMixObject),
           _deviceSampleRate(deviceSampleRate), _bufferSizeInFrames(bufferSizeInFrames),
-          _fdGetterCallback(fdGetterCallback), _pcmAudioService(nullptr), _audioFlinger(nullptr)
+          _fdGetterCallback(fdGetterCallback), _callerThreadUtils(callerThreadUtils),
+          _pcmAudioService(nullptr), _mixController(nullptr)
 {
-    ALOGV("deviceSampleRate: %d, bufferSizeInFrames: %d", _deviceSampleRate, _bufferSizeInFrames);
+    ALOGI("deviceSampleRate: %d, bufferSizeInFrames: %d", _deviceSampleRate, _bufferSizeInFrames);
     if (getSystemAPILevel() >= 17)
     {
-        _audioFlinger = new (std::nothrow) AudioMixerController(_bufferSizeInFrames, _deviceSampleRate, 2);
-        _audioFlinger->init();
+        _mixController = new (std::nothrow) AudioMixerController(_bufferSizeInFrames, _deviceSampleRate, 2);
+        _mixController->init();
         _pcmAudioService = new (std::nothrow) PcmAudioService(engineItf, outputMixObject);
-        _pcmAudioService->init(_audioFlinger, 2, deviceSampleRate, bufferSizeInFrames * 2);
+        _pcmAudioService->init(_mixController, 2, deviceSampleRate, bufferSizeInFrames * 2);
     }
+
+    ALOG_ASSERT(callerThreadUtils != nullptr, "Caller thread utils parameter should not be nullptr!");
 }
 
 AudioPlayerProvider::~AudioPlayerProvider()
 {
     ALOGV("~AudioPlayerProvider()");
     UrlAudioPlayer::stopAll();
-    UrlAudioPlayer::update();
 
-    SL_SAFE_DELETE(_audioFlinger);
     SL_SAFE_DELETE(_pcmAudioService);
+    SL_SAFE_DELETE(_mixController);
 }
 
 IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePath)
 {
-    // Every time requesting a audio player, try to remove unused UrlAudioPlayers
-    UrlAudioPlayer::update();
-
     // Pcm data decoding by OpenSLES API only supports in API level 17 and later.
     if (getSystemAPILevel() < 17)
     {
@@ -308,7 +308,7 @@ PcmAudioPlayer *AudioPlayerProvider::obtainPcmAudioPlayer(const std::string &url
     PcmAudioPlayer *pcmPlayer = nullptr;
     if (pcmData.isValid())
     {
-        pcmPlayer = new(std::nothrow) PcmAudioPlayer(_audioFlinger);
+        pcmPlayer = new(std::nothrow) PcmAudioPlayer(_mixController, _callerThreadUtils);
         if (pcmPlayer != nullptr)
         {
             pcmPlayer->prepare(url, pcmData);
@@ -331,7 +331,7 @@ UrlAudioPlayer *AudioPlayerProvider::createUrlAudioPlayer(
     }
 
     SLuint32 locatorType = info.assetFd > 0 ? SL_DATALOCATOR_ANDROIDFD : SL_DATALOCATOR_URI;
-    auto urlPlayer = new(std::nothrow) UrlAudioPlayer(_engineItf, _outputMixObject);
+    auto urlPlayer = new(std::nothrow) UrlAudioPlayer(_engineItf, _outputMixObject, _callerThreadUtils);
     bool ret = urlPlayer->prepare(info.url, locatorType, info.assetFd, info.start, info.length);
     if (!ret)
     {
@@ -342,9 +342,9 @@ UrlAudioPlayer *AudioPlayerProvider::createUrlAudioPlayer(
 
 void AudioPlayerProvider::pause()
 {
-    if (_audioFlinger != nullptr)
+    if (_mixController != nullptr)
     {
-        _audioFlinger->pause();
+        _mixController->pause();
     }
 
     if (_pcmAudioService != nullptr)
@@ -355,9 +355,9 @@ void AudioPlayerProvider::pause()
 
 void AudioPlayerProvider::resume()
 {
-    if (_audioFlinger != nullptr)
+    if (_mixController != nullptr)
     {
-        _audioFlinger->resume();
+        _mixController->resume();
     }
 
     if (_pcmAudioService != nullptr)

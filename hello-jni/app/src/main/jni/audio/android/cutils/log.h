@@ -41,7 +41,9 @@ extern "C" {
 #endif
 
 // ---------------------------------------------------------------------
-#define LOG_NDEBUG 1
+#ifndef LOG_NDEBUG
+#define LOG_NDEBUG 0
+#endif
 /*
  * Normally we strip ALOGV (VERBOSE messages) from release builds.
  * You can modify this (for example with "#define LOG_NDEBUG 0"

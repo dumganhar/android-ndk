@@ -45,7 +45,7 @@ public class HelloJni extends Activity
     private static final int MY_PERMISSIONS_REQUEST_WRITE_EXTERNAL = 200;
     private Handler mHandler = null;
     private int mAutoPlayCount = 0;
-    private final int DELAY_TIME = 25;
+    private final int DELAY_TIME = 100;
 
     private Runnable mRunnable = new Runnable() {
         @Override

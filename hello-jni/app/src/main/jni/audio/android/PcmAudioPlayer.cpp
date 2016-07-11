@@ -28,15 +28,17 @@ THE SOFTWARE.
 #include "audio/android/PcmAudioPlayer.h"
 #include "audio/android/OpenSLHelper.h"
 #include "audio/android/AudioMixerController.h"
+#include "audio/android/ICallerThreadUtils.h"
 
 namespace cocos2d {
 
-PcmAudioPlayer::PcmAudioPlayer(AudioMixerController * controller)
+PcmAudioPlayer::PcmAudioPlayer(AudioMixerController * controller, ICallerThreadUtils* callerThreadUtils)
         : _id(-1)
         , _state(State::INVALID)
         , _track(nullptr)
         , _playEventCallback(nullptr)
         , _controller(controller)
+        , _callerThreadUtils(callerThreadUtils)
 {
 }
 
@@ -73,7 +75,10 @@ bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
                 }
                 else if (state == Track::State::DESTROYED)
                 {
-                    delete this;
+                    _callerThreadUtils->performFunctionInCallerThread([this](){
+                        // should delete self in caller'thread rather than OpenSLES enqueue thread.
+                        delete this;
+                    });
                 }
             }
         };
@@ -136,7 +141,7 @@ void PcmAudioPlayer::setState(State state)
 void PcmAudioPlayer::play()
 {
     // put track to AudioMixerController
-    ALOGV("PcmAudioPlayer (%p) play (%s) ...", this, _url.c_str());
+    ALOGD("PcmAudioPlayer (%p) play (%s) ...", this, _url.c_str());
     _controller->addTrack(_track);
 }
 
