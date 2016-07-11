@@ -34,6 +34,13 @@ THE SOFTWARE.
 
 namespace cocos2d {
 
+// Return true if either they have both expired or they both "point" to the
+// same object.
+static bool operator== (const std::weak_ptr<Track>& lhs, const std::weak_ptr<Track>& rhs )
+{
+    return ( lhs.lock() == rhs.lock() ) ;
+}
+
 AudioMixerController::AudioMixerController(int bufferSizeInFrames, int sampleRate, int channelCount)
         : _bufferSizeInFrames(bufferSizeInFrames)
         , _sampleRate(sampleRate)
@@ -88,7 +95,7 @@ bool AudioMixerController::init()
     return true;
 }
 
-bool AudioMixerController::addTrack(Track* track)
+bool AudioMixerController::addTrack(std::shared_ptr<Track> track)
 {
     bool ret = false;
 
@@ -138,7 +145,7 @@ void AudioMixerController::mixOneFrame()
 
 //    _switchMutex.unlock();
 
-    std::vector<Track*> tracksToRemove;
+    std::vector<std::weak_ptr<Track>> tracksToRemove;
     tracksToRemove.reserve(_activeTracks.size());
 
     // FOR TESTING BEGIN
@@ -169,8 +176,15 @@ void AudioMixerController::mixOneFrame()
 
     Track::State state;
     // set up the tracks.
-    for (Track* track : _activeTracks)
+    for (auto&& weakTrack : _activeTracks)
     {
+        std::shared_ptr<Track> track = weakTrack.lock();
+        if (track == nullptr)
+        {
+            tracksToRemove.push_back(track);
+            continue;
+        }
+
         state = track->getState();
 
         if (state == Track::State::IDLE)
@@ -186,7 +200,7 @@ void AudioMixerController::mixOneFrame()
             }
             else
             {
-                _mixer->setBufferProvider(name, track);
+                _mixer->setBufferProvider(name, track.get());
                 _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER,
                                      _mixing->buf);
                 _mixer->setParameter(
@@ -295,12 +309,18 @@ void AudioMixerController::mixOneFrame()
 //    _activeTracksMutex.lock();
 
     // Remove stopped or playover tracks for active tracks container
-    for (Track* track : tracksToRemove)
+    for (auto&& weakTrack : tracksToRemove)
     {
-        removeItemFromVector(_activeTracks, track);
-        if (track->onStateChanged != nullptr)
+        auto track = weakTrack.lock();
+        removeItemFromVector(_activeTracks, weakTrack);
+
+        if (track != nullptr && track->onStateChanged != nullptr)
         {
             track->onStateChanged(Track::State::DESTROYED);
+        }
+        else
+        {
+            ALOGV("track was released ...");
         }
     }
 
@@ -406,8 +426,11 @@ bool AudioMixerController::hasPlayingTacks()
     if (_activeTracks.empty())
         return false;
 
-    for (Track* track : _activeTracks)
+    for (auto&& weakTrack : _activeTracks)
     {
+        auto track = weakTrack.lock();
+        if (track == nullptr)
+            continue;
         Track::State state = track->getState();
         if (state == Track::State::IDLE || state == Track::State::PLAYING || state == Track::State::RESUMED)
         {

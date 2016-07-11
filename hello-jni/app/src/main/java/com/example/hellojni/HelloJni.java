@@ -138,9 +138,7 @@ public class HelloJni extends Activity
             files[i] = String.format("%02d.mp3", i);
             Log.d(TAG, "load file: " + files[i]);
         }
-//        files[10] = "/sdcard/doorOpen.ogg";
 
-//        String files[] = new String[] {"doorOpen.ogg"};
         jniLoadSamples(getAssets(), files);
 
         // UI

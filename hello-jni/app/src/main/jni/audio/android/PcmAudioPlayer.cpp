@@ -26,7 +26,6 @@ THE SOFTWARE.
 
 #include "audio/android/cutils/log.h"
 #include "audio/android/PcmAudioPlayer.h"
-#include "audio/android/OpenSLHelper.h"
 #include "audio/android/AudioMixerController.h"
 #include "audio/android/ICallerThreadUtils.h"
 
@@ -40,12 +39,12 @@ PcmAudioPlayer::PcmAudioPlayer(AudioMixerController * controller, ICallerThreadU
         , _controller(controller)
         , _callerThreadUtils(callerThreadUtils)
 {
+    ALOGV("PcmAudioPlayer constructor: %p", this);
 }
 
 PcmAudioPlayer::~PcmAudioPlayer()
 {
     ALOGV("In the destructor of PcmAudioPlayer (%p)", this);
-    SL_SAFE_DELETE(_track);
 }
 
 bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
@@ -61,25 +60,30 @@ bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
         _url = url;
         _decResult = decResult;
 
-        _track = new Track(_decResult);
+        _track = std::make_shared<Track>(_decResult);
         _track->onStateChanged = [this](Track::State state) {
-            if (_playEventCallback != nullptr)
+
+            if (state == Track::State::OVER)
             {
-                if (state == Track::State::OVER)
+                if (_playEventCallback != nullptr)
                 {
                     _playEventCallback(State::OVER);
                 }
-                else if (state == Track::State::STOPPED)
+            }
+            else if (state == Track::State::STOPPED)
+            {
+                if (_playEventCallback != nullptr)
                 {
                     _playEventCallback(State::STOPPED);
                 }
-                else if (state == Track::State::DESTROYED)
-                {
-                    _callerThreadUtils->performFunctionInCallerThread([this](){
-                        // should delete self in caller'thread rather than OpenSLES enqueue thread.
-                        delete this;
-                    });
-                }
+            }
+            else if (state == Track::State::DESTROYED)
+            {
+                _callerThreadUtils->performFunctionInCallerThread([this](){
+                    // should delete self in caller'thread rather than OpenSLES enqueue thread.
+                    ALOGV("Before deleting PcmAudioPlayer (%p)", this);
+                    delete this;
+                });
             }
         };
 

@@ -161,6 +161,7 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
 jboolean loadSample(JNIEnv *env, AAssetManager *amgr, jstring filename) {
     const char *utf8 = env->GetStringUTFChars(filename, NULL);
 
+    ALOGV("loadSample: %s", utf8);
     __audioPlayerProvider->preloadEffect(utf8);
 
     env->ReleaseStringUTFChars(filename, utf8);
