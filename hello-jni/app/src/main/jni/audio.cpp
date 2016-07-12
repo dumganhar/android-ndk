@@ -88,7 +88,9 @@ Java_com_example_hellojni_HelloJni_jniOnUpdate(JNIEnv *env, jobject instance) {
 JNIEXPORT
 jboolean
 JNICALL
-AUDIO_FUNC(jniCreate)(JNIEnv *env, jclass clazz, jint sampleRate, jint bufferSizeInFrames) {
+AUDIO_FUNC(jniCreate)(JNIEnv *env, jclass clazz, jobject asset_man, jint sampleRate, jint bufferSizeInFrames) {
+    __assetManager = AAssetManager_fromJava(env, asset_man);
+
     SLresult res;
     SLEngineOption EngineOption[] = {
             {(SLuint32) SL_ENGINEOPTION_THREADSAFE, (SLuint32) SL_BOOLEAN_TRUE}
@@ -135,9 +137,8 @@ AUDIO_FUNC(jniShutdown)(JNIEnv *env, jclass clazz) {
 JNIEXPORT
 jboolean
 JNICALL
-AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobjectArray files) {
-    AAssetManager *amgr = AAssetManager_fromJava(env, asset_man);
-    __assetManager = amgr;
+AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobjectArray files) {
+
     int len = env->GetArrayLength(files);
 
     static int __counter = 0;
@@ -146,7 +147,7 @@ AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobject
     for (int i = 0; i < len; ++i)
     {
         jstring filename = (jstring) env->GetObjectArrayElement(files, i);
-        jboolean loaded = loadSample(env, amgr, filename);
+        jboolean loaded = loadSample(env, __assetManager, filename);
 
         //test begin
 //        std::string url = "test/A1-Guitar1-1.mp3";
@@ -183,7 +184,8 @@ jboolean
 JNICALL
 AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_state) {
 
-    if (__fileIndex > 28) {
+    if (__fileIndex > 3)//28)
+    {
         __fileIndex = 0;
     }
     char filePath[256] = {0};
@@ -192,6 +194,14 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
 //    __currentFilePath = "doorOpen.ogg";//filePath;
 
     ++__fileIndex;
+
+    std::string p = __currentFilePath;
+    for (int i = 0; i < 10; ++i)
+    {
+        __audioPlayerProvider->preloadEffect(__currentFilePath, [=](bool succeed, PcmData data) {
+            ALOGV("%d, preload (%s), succeed: %d, isValid: %d", i, p.c_str(), succeed, data.isValid());
+        });
+    }
 
     auto oldTime = clockNow();
     auto player = __audioPlayerProvider->getAudioPlayer(__currentFilePath);
@@ -213,8 +223,25 @@ jboolean loadSample(JNIEnv *env, AAssetManager *amgr, jstring filename) {
 
     std::string filePath = utf8;
 
-    __audioPlayerProvider->preloadEffect(utf8, [filePath](PcmData data){
-        ALOGD("preload (%s) return: %d", filePath.c_str(), data.isValid());
+    static int totalSuccessCount = 0;
+    static std::chrono::high_resolution_clock::time_point oldTime;
+
+    if (totalSuccessCount == 0)
+    {
+        oldTime = clockNow();
+    }
+
+    __audioPlayerProvider->preloadEffect(utf8, [filePath](bool succeed, PcmData data){
+        ALOGD("preload (%s) return: isSucceed: %d, valid: %d, successcount: %d", filePath.c_str(), succeed, data.isValid(), totalSuccessCount);
+        totalSuccessCount++;
+
+        if (totalSuccessCount == 312)
+        {
+            auto nowTime = clockNow();
+            ALOGV("preloading all files wastes %fms", intervalInMS(oldTime, nowTime));
+            totalSuccessCount = 0;
+            oldTime = nowTime;
+        }
     });
 
     env->ReleaseStringUTFChars(filename, utf8);

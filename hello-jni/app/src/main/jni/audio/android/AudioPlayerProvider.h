@@ -55,7 +55,8 @@ public:
 
     IAudioPlayer *getAudioPlayer(const std::string &audioFilePath);
 
-    void preloadEffect(const std::string &audioFilePath, const std::function<void(PcmData)>& cb);
+    typedef std::function<void(bool/* succeed */, PcmData /* data */)> PreloadCallback;
+    void preloadEffect(const std::string &audioFilePath, const PreloadCallback& cb);
 
     void clearPcmCache(const std::string &audioFilePath);
 
@@ -88,8 +89,7 @@ private:
 
     UrlAudioPlayer *createUrlAudioPlayer(const AudioFileInfo &info);
 
-    void preloadEffect(const AudioFileInfo &info, const std::function<void(PcmData)>& cb);
-    std::future<PcmData> preloadEffect(const AudioFileInfo &info);
+    std::shared_ptr<std::promise<PcmData>> preloadEffect(const AudioFileInfo &info, const PreloadCallback& cb);
 
     AudioFileInfo getFileInfo(const std::string &audioFilePath);
 
@@ -104,6 +104,15 @@ private:
     ICallerThreadUtils* _callerThreadUtils;
 
     std::unordered_map<std::string, PcmData> _pcmCache;
+    std::mutex _pcmCacheMutex;
+
+    struct PreloadCallbackParam
+    {
+        PreloadCallback callback;
+        std::shared_ptr<std::promise<PcmData>> promise;
+    };
+    std::unordered_map<std::string, std::vector<PreloadCallbackParam>> _preloadCallbackMap;
+    std::mutex _preloadCallbackMutex;
 
     PcmAudioService* _pcmAudioService;
     AudioMixerController *_mixController;
