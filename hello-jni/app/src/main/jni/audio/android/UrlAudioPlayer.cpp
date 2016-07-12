@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 #include "audio/android/UrlAudioPlayer.h"
 #include "audio/android/ICallerThreadUtils.h"
+#include "audio/android/AssetFd.h"
 
 #include <math.h>
 #include <algorithm> // for std::find
@@ -39,7 +40,7 @@ static int __instanceCount = 0;
 
 UrlAudioPlayer::UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject, ICallerThreadUtils* callerThreadUtils)
         : _engineItf(engineItf), _outputMixObj(outputMixObject),
-          _callerThreadUtils(callerThreadUtils), _id(-1), _assetFd(0),
+          _callerThreadUtils(callerThreadUtils), _id(-1), _assetFd(nullptr),
           _playObj(nullptr), _playItf(nullptr), _seekItf(nullptr), _volumeItf(nullptr),
           _volume(0.0f), _isLoop(false), _duration(0.0f), _state(State::INVALID),
           _isDestroyed(false), _playEventCallback(nullptr)
@@ -94,8 +95,8 @@ void UrlAudioPlayer::playEventCallback(SLPlayItf caller, SLuint32 playEvent)
                 _playEventCallback(State::OVER);
             }
 
+            ALOGV("UrlAudioPlayer (%p) played over, destroy self ...", this);
             _callerThreadUtils->performFunctionInCallerThread([this](){
-                ALOGV("UrlAudioPlayer (%p) played over, destroy self ...", this);
                 destroy();
                 // Delete self in caller's thread asynchronously
                 delete this;
@@ -209,13 +210,13 @@ bool UrlAudioPlayer::setPosition(float pos)
     return true;
 }
 
-bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, int assetFd, int start,
+bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, std::shared_ptr<AssetFd> assetFd, int start,
                              int length)
 {
     _url = url;
     _assetFd = assetFd;
 
-    ALOGV("UrlAudioPlayer::prepare: %s, %d, %d, %d, %d", _url.c_str(), (int)locatorType, assetFd, start,
+    ALOGV("UrlAudioPlayer::prepare: %s, %d, %d, %d, %d", _url.c_str(), (int)locatorType, assetFd->getFd(), start,
          length);
     SLDataSource audioSrc;
 
@@ -233,7 +234,7 @@ bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, int a
 
     if (locatorType == SL_DATALOCATOR_ANDROIDFD)
     {
-        locFd = {locatorType, _assetFd, start, length};
+        locFd = {locatorType, _assetFd->getFd(), start, length};
         audioSrc.pLocator = &locFd;
     }
     else if (locatorType == SL_DATALOCATOR_URI)
@@ -329,13 +330,8 @@ void UrlAudioPlayer::destroy()
     {
         ALOGV("UrlAudioPlayer::destroy() %p", this);
         _isDestroyed = true;
+        ALOGV("Before destroying SL play object ...");
         SL_DESTROY_OBJ(_playObj);
-
-        if (_assetFd > 0)
-        {
-            ::close(_assetFd);
-            _assetFd = 0;
-        }
         ALOGV("UrlAudioPlayer::destroy end");
     }
 }

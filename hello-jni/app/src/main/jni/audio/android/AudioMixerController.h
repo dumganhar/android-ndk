@@ -61,7 +61,7 @@ public:
 
     bool init();
 
-    bool addTrack(std::shared_ptr<Track> track);
+    bool addTrack(Track* track);
 //    void switchBuffers();
 
 //    inline bool hasActiveTracks()
@@ -108,7 +108,7 @@ private:
     AudioMixer* _mixer;
 
     std::mutex _activeTracksMutex;
-    std::vector<std::weak_ptr<Track>> _activeTracks;
+    std::vector<Track*> _activeTracks;
 //    std::mutex _switchMutex;
 
     OutputBuffer _buffers[1];

@@ -60,7 +60,7 @@ bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
         _url = url;
         _decResult = decResult;
 
-        _track = std::make_shared<Track>(_decResult);
+        _track = new (std::nothrow) Track(_decResult);
         _track->onStateChanged = [this](Track::State state) {
 
             if (state == Track::State::OVER)
@@ -79,9 +79,9 @@ bool PcmAudioPlayer::prepare(const std::string &url, const PcmData &decResult)
             }
             else if (state == Track::State::DESTROYED)
             {
+                ALOGV("Before deleting PcmAudioPlayer (%p)", this);
                 _callerThreadUtils->performFunctionInCallerThread([this](){
                     // should delete self in caller'thread rather than OpenSLES enqueue thread.
-                    ALOGV("Before deleting PcmAudioPlayer (%p)", this);
                     delete this;
                 });
             }

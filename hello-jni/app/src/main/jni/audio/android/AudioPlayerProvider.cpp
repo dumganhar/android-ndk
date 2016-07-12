@@ -30,7 +30,7 @@ THE SOFTWARE.
 #include "audio/android/AudioDecoder.h"
 #include "audio/android/AudioMixerController.h"
 #include "audio/android/PcmAudioService.h"
-#include "audio/android/cutils/log.h"
+#include "audio/android/AssetFd.h"
 
 #include <sys/system_properties.h>
 #include <stdlib.h>
@@ -180,6 +180,7 @@ PcmData AudioPlayerProvider::preloadEffect(const AudioFileInfo &info)
     auto iter = _pcmCache.find(audioFilePath);
     if (iter != _pcmCache.end())
     {
+        ALOGV("Return pcm data from cache, url: %s", info.url.c_str());
         return iter->second;
     }
 
@@ -253,7 +254,7 @@ AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(
     }
 
     info.url = audioFilePath;
-    info.assetFd = assetFd;
+    info.assetFd = std::make_shared<AssetFd>(assetFd);
     info.start = start;
     info.length = fileSize;
 
@@ -331,7 +332,7 @@ UrlAudioPlayer *AudioPlayerProvider::createUrlAudioPlayer(
     }
 
     SLuint32 locatorType = info.assetFd > 0 ? SL_DATALOCATOR_ANDROIDFD : SL_DATALOCATOR_URI;
-    auto urlPlayer = new(std::nothrow) UrlAudioPlayer(_engineItf, _outputMixObject, _callerThreadUtils);
+    auto urlPlayer = new (std::nothrow) UrlAudioPlayer(_engineItf, _outputMixObject, _callerThreadUtils);
     bool ret = urlPlayer->prepare(info.url, locatorType, info.assetFd, info.start, info.length);
     if (!ret)
     {

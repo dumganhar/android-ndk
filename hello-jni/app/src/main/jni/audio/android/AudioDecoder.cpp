@@ -94,13 +94,17 @@ AudioDecoder::AudioDecoder(SLEngineItf engineItf, const std::string &url, int sa
 
 AudioDecoder::~AudioDecoder()
 {
+    ALOGV("~AudioDecoder() %p", this);
+
+    ALOGV("Before destroying SL play object");
+    SL_DESTROY_OBJ(_playObj);
+    ALOGV("After destroying SL play object");
     if (_assetFd > 0)
     {
+        ALOGV("Closing assetFd: %d", _assetFd);
         ::close(_assetFd);
         _assetFd = 0;
     }
-
-    SL_DESTROY_OBJ(_playObj);
 }
 
 bool AudioDecoder::start(const FdGetterCallback &fdGetterCallback)

@@ -27,12 +27,15 @@ THE SOFTWARE.
 
 #include "audio/android/IAudioPlayer.h"
 #include "audio/android/OpenSLHelper.h"
+#include "AssetFd.h"
 #include <mutex>
 #include <vector>
+#include <memory>
 
 namespace cocos2d {
 
 class ICallerThreadUtils;
+class AssetFd;
 
 class UrlAudioPlayer : public IAudioPlayer
 {
@@ -83,7 +86,7 @@ private:
     UrlAudioPlayer(SLEngineItf engineItf, SLObjectItf outputMixObject, ICallerThreadUtils* callerThreadUtils);
     virtual ~UrlAudioPlayer();
 
-    bool prepare(const std::string &url, SLuint32 locatorType, int assetFd, int start, int length);
+    bool prepare(const std::string &url, SLuint32 locatorType, std::shared_ptr<AssetFd> assetFd, int start, int length);
 
     static void stopAll();
 
@@ -102,7 +105,7 @@ private:
     int _id;
     std::string _url;
 
-    int _assetFd;
+    std::shared_ptr<AssetFd> _assetFd;
 
     SLObjectItf _playObj;
     SLPlayItf _playItf;

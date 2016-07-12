@@ -7,10 +7,9 @@
 
 #include "audio/android/AudioPlayerProvider.h"
 
-#include <set>
 #include <chrono>
 #include <audio/android/ICallerThreadUtils.h>
-#include "audio/android/cutils/log.h"
+#include <mutex>
 
 #define LOG_TAG "audio.cpp"
 
@@ -23,7 +22,8 @@ static AudioOutputMix output;
 static AAssetManager* __assetManager;
 static AudioPlayerProvider* __audioPlayerProvider = nullptr;
 
-static std::set<IAudioPlayer*> __audioPlayers;
+static std::vector<std::function<void()>> __functionsToPerform;
+static std::mutex __performMutex;
 
 static int __fileIndex = 0;
 static std::string __currentFilePath;
@@ -33,11 +33,13 @@ static std::string __currentFilePath;
 
 static int fdGetter(const std::string& url, off_t* start, off_t* length)
 {
-    ALOGV("in the callback of fdgetter ...");
+    ALOGV("in the callback of fdgetter, url: %s", url.c_str());
     int ret = 0;
-    auto asset = AAssetManager_open(__assetManager, url.c_str(), AASSET_MODE_UNKNOWN);
+    AAsset* asset = AAssetManager_open(__assetManager, url.c_str(), AASSET_MODE_UNKNOWN);
+    ALOG_ASSERT(asset != nullptr, "AAssetManager_open (%s) return nullptr!", url.c_str());
     // open asset as file descriptor
     ret = AAsset_openFileDescriptor(asset, start, length);
+    ALOG_ASSERT(ret > 0, "AAset_openFileDescriptor (%s) failed!", url.c_str());
     AAsset_close(asset);
 
     return ret;
@@ -67,6 +69,22 @@ Java_com_example_hellojni_HelloJni_jniOnResume(JNIEnv *env, jobject instance) {
     }
 };
 
+JNIEXPORT void JNICALL
+Java_com_example_hellojni_HelloJni_jniOnUpdate(JNIEnv *env, jobject instance) {
+// Testing size is faster than locking / unlocking.
+    // And almost never there will be functions scheduled to be called.
+    if( !__functionsToPerform.empty() ) {
+        __performMutex.lock();
+        // fixed #4123: Save the callback functions, they must be invoked after '_performMutex.unlock()', otherwise if new functions are added in callback, it will cause thread deadlock.
+        auto temp = __functionsToPerform;
+        __functionsToPerform.clear();
+        __performMutex.unlock();
+        for( const auto &function : temp ) {
+            function();
+        }
+    }
+};
+
 JNIEXPORT
 jboolean
 JNICALL
@@ -88,11 +106,16 @@ AUDIO_FUNC(jniCreate)(JNIEnv *env, jclass clazz, jint sampleRate, jint bufferSiz
     {
     public:
         virtual void performFunctionInCallerThread(const std::function<void()>& func) {
-            func();
+            __performMutex.lock();
+
+            __functionsToPerform.push_back(func);
+
+            __performMutex.unlock();
         };
     };
     static CallerThreadUtils __callerThreadUtils;
 
+    __functionsToPerform.reserve(30);
     __audioPlayerProvider = new (std::nothrow) AudioPlayerProvider(engine.engine, output.object, sampleRate, bufferSizeInFrames, fdGetter, &__callerThreadUtils);
 
     return JNI_TRUE;
@@ -117,14 +140,33 @@ AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobject
     __assetManager = amgr;
     int len = env->GetArrayLength(files);
 
+    static int __counter = 0;
     for (int i = 0; i < len; ++i)
     {
         jstring filename = (jstring) env->GetObjectArrayElement(files, i);
         jboolean loaded = loadSample(env, amgr, filename);
+
+        //test begin
+//        std::string url = "test/A1-Guitar1-1.mp3";
+//        off_t start, length;
+//        int ret;
+//
+//        ALOGV("AAssetManager_open url: %s, %d times", url.c_str(), __counter);
+//        AAsset* asset = AAssetManager_open(__assetManager, url.c_str(), AASSET_MODE_UNKNOWN);
+//        ALOG_ASSERT(asset != nullptr, "AAssetManager_open (%s) return nullptr!", url.c_str());
+//        // open asset as file descriptor
+//        ret = AAsset_openFileDescriptor(asset, &start, &length);
+//        ALOG_ASSERT(ret > 0, "AAset_openFileDescriptor (%s) failed!", url.c_str());
+//        AAsset_close(asset);
+//        ::close(ret);
+        //test end
+
+        env->DeleteLocalRef(filename);
         if (!loaded) {
             ALOGE("jniLoadSamples failed");
             return JNI_FALSE;
         }
+        __counter++;
     }
 
     return JNI_TRUE;

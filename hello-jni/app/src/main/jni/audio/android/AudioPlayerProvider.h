@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include "audio/android/PcmData.h"
 
 #include <unordered_map>
+#include <memory>
 
 namespace cocos2d {
 // Manage PcmAudioPlayer& UrlAudioPlayer
@@ -39,6 +40,7 @@ class PcmAudioService;
 class UrlAudioPlayer;
 class AudioMixerController;
 class ICallerThreadUtils;
+class AssetFd;
 
 class AudioPlayerProvider
 {
@@ -62,15 +64,16 @@ public:
     void resume();
 
 private:
+
     struct AudioFileInfo
     {
         std::string url;
-        int assetFd;
+        std::shared_ptr<AssetFd> assetFd;
         off_t start;
         off_t length;
 
         AudioFileInfo()
-                : assetFd(0), start(0), length(0)
+                : assetFd(nullptr), start(0), length(0)
         { };
 
         inline bool isValid() const

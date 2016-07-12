@@ -93,7 +93,7 @@ private:
 
     std::mutex _stateMutex;
 
-    std::shared_ptr<Track> _track;
+    Track* _track;
 
     PlayEventCallback _playEventCallback;
 
