@@ -31,6 +31,7 @@ THE SOFTWARE.
 
 #include <unordered_map>
 #include <memory>
+#include <future>
 
 namespace cocos2d {
 // Manage PcmAudioPlayer& UrlAudioPlayer
@@ -41,6 +42,7 @@ class UrlAudioPlayer;
 class AudioMixerController;
 class ICallerThreadUtils;
 class AssetFd;
+class ThreadPool;
 
 class AudioPlayerProvider
 {
@@ -53,7 +55,7 @@ public:
 
     IAudioPlayer *getAudioPlayer(const std::string &audioFilePath);
 
-    PcmData preloadEffect(const std::string &audioFilePath);
+    void preloadEffect(const std::string &audioFilePath, const std::function<void(PcmData)>& cb);
 
     void clearPcmCache(const std::string &audioFilePath);
 
@@ -86,7 +88,8 @@ private:
 
     UrlAudioPlayer *createUrlAudioPlayer(const AudioFileInfo &info);
 
-    PcmData preloadEffect(const AudioFileInfo &info);
+    void preloadEffect(const AudioFileInfo &info, const std::function<void(PcmData)>& cb);
+    std::future<PcmData> preloadEffect(const AudioFileInfo &info);
 
     AudioFileInfo getFileInfo(const std::string &audioFilePath);
 
@@ -104,6 +107,8 @@ private:
 
     PcmAudioService* _pcmAudioService;
     AudioMixerController *_mixController;
+
+    ThreadPool* _threadPool;
 };
 
 } //namespace cocos2d {

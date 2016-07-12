@@ -31,10 +31,13 @@ THE SOFTWARE.
 #include "audio/android/AudioMixerController.h"
 #include "audio/android/PcmAudioService.h"
 #include "audio/android/AssetFd.h"
+#include "audio/android/CCThreadPool.h"
+#include "audio/android/ICallerThreadUtils.h"
 
 #include <sys/system_properties.h>
 #include <stdlib.h>
 #include <algorithm> // for std::find_if
+#include <chrono>
 
 namespace cocos2d {
 
@@ -82,7 +85,8 @@ AudioPlayerProvider::AudioPlayerProvider(SLEngineItf engineItf, SLObjectItf outp
         : _engineItf(engineItf), _outputMixObject(outputMixObject),
           _deviceSampleRate(deviceSampleRate), _bufferSizeInFrames(bufferSizeInFrames),
           _fdGetterCallback(fdGetterCallback), _callerThreadUtils(callerThreadUtils),
-          _pcmAudioService(nullptr), _mixController(nullptr)
+          _pcmAudioService(nullptr), _mixController(nullptr),
+          _threadPool(ThreadPool::newCachedThreadPool(1, 8, 5, 2, 2))
 {
     ALOGI("deviceSampleRate: %d, bufferSizeInFrames: %d", _deviceSampleRate, _bufferSizeInFrames);
     if (getSystemAPILevel() >= 17)
@@ -103,6 +107,7 @@ AudioPlayerProvider::~AudioPlayerProvider()
 
     SL_SAFE_DELETE(_pcmAudioService);
     SL_SAFE_DELETE(_mixController);
+    SL_SAFE_DELETE(_threadPool);
 }
 
 IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePath)
@@ -138,12 +143,19 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
         {
             if (isSmallFile(info))
             {
-                pcmData = preloadEffect(info);
-                player = obtainPcmAudioPlayer(info.url, pcmData);
-                if (player == nullptr)
+                std::future<PcmData> fut = preloadEffect(info);
+                std::future_status status = fut.wait_for(std::chrono::seconds(5));
+                if (status == std::future_status::ready)
                 {
-                    ALOGV("2, PcmAudioPlayerPool is full, use an UrlAudioPlayer to play instead!");
-                    player = createUrlAudioPlayer(info);
+                    pcmData = fut.get();
+                    if (pcmData.isValid())
+                    {
+                        player = obtainPcmAudioPlayer(info.url, pcmData);
+                    }
+                }
+                else
+                {
+                    ALOGW("preload (%s) timeout: %d", info.url.c_str(), (int) status);
                 }
             }
             else
@@ -156,53 +168,75 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
     return player;
 }
 
-PcmData AudioPlayerProvider::preloadEffect(const std::string &audioFilePath)
+void AudioPlayerProvider::preloadEffect(const std::string &audioFilePath, const std::function<void(PcmData)>& cb)
 {
     auto info = getFileInfo(audioFilePath);
-    return preloadEffect(info);
+    preloadEffect(info, [this, cb, audioFilePath](PcmData data){
+        _callerThreadUtils->performFunctionInCallerThread([this, data, cb, audioFilePath](){
+            if (data.isValid())
+            {
+                _pcmCache.insert(std::make_pair(audioFilePath, data));
+            }
+            else
+            {
+                ALOGE("decode (%s) failed!", audioFilePath.c_str());
+            }
+            cb(data);
+        });
+    });
 }
 
-PcmData AudioPlayerProvider::preloadEffect(const AudioFileInfo &info)
+void AudioPlayerProvider::preloadEffect(const AudioFileInfo &info, const std::function<void(PcmData)>& cb)
 {
     PcmData pcmData;
     // Pcm data decoding by OpenSLES API only supports in API level 17 and later.
     if (getSystemAPILevel() < 17)
     {
-        return pcmData;
+        cb(pcmData);
+        return;
     }
 
     if (!info.isValid())
     {
-        return pcmData;
+        cb(pcmData);
+        return;
     }
 
     std::string audioFilePath = info.url;
-    auto iter = _pcmCache.find(audioFilePath);
+    auto&& iter = _pcmCache.find(audioFilePath);
     if (iter != _pcmCache.end())
     {
         ALOGV("Return pcm data from cache, url: %s", info.url.c_str());
-        return iter->second;
+        cb(pcmData);
+        return;
     }
 
     if (isSmallFile(info))
     {
-        ALOGV("AudioPlayerProvider::preloadEffect: %s", audioFilePath.c_str());
-        AudioDecoder decoder(_engineItf, audioFilePath, _bufferSizeInFrames, _deviceSampleRate);
-        if (decoder.start(_fdGetterCallback))
-        {
-            pcmData = decoder.getResult();
-            _pcmCache.insert(std::make_pair(audioFilePath, pcmData));
-        }
-        else
-        {
-            ALOGE("decode (%s) failed!", audioFilePath.c_str());
-        }
+        _threadPool->pushTask([this, audioFilePath, cb](int tid){
+            ALOGV("AudioPlayerProvider::preloadEffect: %s", audioFilePath.c_str());
+            AudioDecoder decoder(_engineItf, audioFilePath, _bufferSizeInFrames, _deviceSampleRate);
+            decoder.start(_fdGetterCallback);
+            cb(decoder.getResult());
+        });
     }
     else
     {
         ALOGV("File (%s) is too large, ignore preload!", audioFilePath.c_str());
     }
-    return pcmData;
+}
+
+std::future<PcmData> AudioPlayerProvider::preloadEffect(
+        const AudioPlayerProvider::AudioFileInfo& info)
+{
+    auto promise = std::make_shared<std::promise<PcmData>>();
+
+    preloadEffect(info, [promise](PcmData data){
+        ALOGV("preloadEffect callback, data.isValid=%d", data.isValid());
+        promise->set_value(data);
+    });
+
+    return promise->get_future();
 }
 
 AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(

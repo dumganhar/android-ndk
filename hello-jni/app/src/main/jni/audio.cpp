@@ -141,6 +141,8 @@ AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobject
     int len = env->GetArrayLength(files);
 
     static int __counter = 0;
+    auto oldTime = clockNow();
+
     for (int i = 0; i < len; ++i)
     {
         jstring filename = (jstring) env->GetObjectArrayElement(files, i);
@@ -168,6 +170,10 @@ AUDIO_FUNC(jniLoadSamples)(JNIEnv *env, jclass clazz, jobject asset_man, jobject
         }
         __counter++;
     }
+
+    auto nowTime = clockNow();
+
+    ALOGV("Preloading all samples wastes: %fms", intervalInMS(oldTime, nowTime));
 
     return JNI_TRUE;
 }
@@ -204,7 +210,12 @@ jboolean loadSample(JNIEnv *env, AAssetManager *amgr, jstring filename) {
     const char *utf8 = env->GetStringUTFChars(filename, NULL);
 
     ALOGV("loadSample: %s", utf8);
-    __audioPlayerProvider->preloadEffect(utf8);
+
+    std::string filePath = utf8;
+
+    __audioPlayerProvider->preloadEffect(utf8, [filePath](PcmData data){
+        ALOGD("preload (%s) return: %d", filePath.c_str(), data.isValid());
+    });
 
     env->ReleaseStringUTFChars(filename, utf8);
 
