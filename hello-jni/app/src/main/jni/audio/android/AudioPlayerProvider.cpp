@@ -187,7 +187,7 @@ PcmData AudioPlayerProvider::preloadEffect(const AudioFileInfo &info)
     if (isSmallFile(info))
     {
         ALOGV("AudioPlayerProvider::preloadEffect: %s", audioFilePath.c_str());
-        AudioDecoder decoder(_engineItf, audioFilePath, _deviceSampleRate);
+        AudioDecoder decoder(_engineItf, audioFilePath, _bufferSizeInFrames, _deviceSampleRate);
         if (decoder.start(_fdGetterCallback))
         {
             pcmData = decoder.getResult();
