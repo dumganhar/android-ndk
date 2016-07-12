@@ -224,57 +224,74 @@ void AudioMixerController::mixOneFrame()
                 track->setVolumeDirty(false);
             }
         }
-        else
+        else if (state == Track::State::PLAYING)
         {
             ALOG_ASSERT(track->getName() >= 0);
-
-            if (state == Track::State::PLAYING)
-            {
-                int name = track->getName();
-                // If we don't use multiple buffers, no need to reset the MAIN_BUFFER for mixer.
+            int name = track->getName();
+            // If we don't use multiple buffers, no need to reset the MAIN_BUFFER for mixer.
 //                _mixer->setParameter(name, AudioMixer::TRACK, AudioMixer::MAIN_BUFFER, _mixing->buf);
-                if (track->isVolumeDirty())
-                {
-                    gain_minifloat_packed_t volume = track->getVolumeLR();
-                    float lVolume = float_from_gain(gain_minifloat_unpack_left(volume));
-                    float rVolume = float_from_gain(gain_minifloat_unpack_right(volume));
+            if (track->isVolumeDirty())
+            {
+                gain_minifloat_packed_t volume = track->getVolumeLR();
+                float lVolume = float_from_gain(gain_minifloat_unpack_left(volume));
+                float rVolume = float_from_gain(gain_minifloat_unpack_right(volume));
 
-                    ALOGV("Track (name: %d)'s volume is dirty, update volume to L: %f, R: %f", name, lVolume, rVolume);
+                ALOGV("Track (name: %d)'s volume is dirty, update volume to L: %f, R: %f", name, lVolume, rVolume);
 
-                    _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &lVolume);
-                    _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &rVolume);
+                _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME0, &lVolume);
+                _mixer->setParameter(name, AudioMixer::VOLUME, AudioMixer::VOLUME1, &rVolume);
 
-                    track->setVolumeDirty(false);
-                }
+                track->setVolumeDirty(false);
             }
-            else if (state == Track::State::RESUMED)
+        }
+        else if (state == Track::State::RESUMED)
+        {
+            if (track->getPrevState() == Track::State::PAUSED)
             {
                 _mixer->enable(track->getName());
                 track->setState(Track::State::PLAYING);
             }
-            else if (state == Track::State::PAUSED)
+            else
+            {
+                ALOGW("Previous state (%d) isn't PAUSED, couldn't resume!", track->getPrevState());
+            }
+        }
+        else if (state == Track::State::PAUSED)
+        {
+            if (track->getPrevState() == Track::State::PLAYING || track->getPrevState() == Track::State::RESUMED)
             {
                 _mixer->disable(track->getName());
             }
-            else if (state == Track::State::STOPPED)
+            else
+            {
+                ALOGW("Previous state (%d) isn't PLAYING, couldn't pause!", track->getPrevState());
+            }
+        }
+        else if (state == Track::State::STOPPED)
+        {
+            if (track->getPrevState() != Track::State::IDLE)
             {
                 _mixer->deleteTrackName(track->getName());
-                tracksToRemove.push_back(track);
             }
-
-            if (track->isPlayOver())
+            else
             {
-                if (track->isLoop())
-                {
-                    track->reset();
-                }
-                else
-                {
-                    ALOGV("Play over ...");
-                    _mixer->deleteTrackName(track->getName());
-                    tracksToRemove.push_back(track);
-                    track->setState(Track::State::OVER);
-                }
+                ALOGV("Stop track (%p) while it's in IDLE state!", track);
+            }
+            tracksToRemove.push_back(track);
+        }
+
+        if (track->isPlayOver())
+        {
+            if (track->isLoop())
+            {
+                track->reset();
+            }
+            else
+            {
+                ALOGV("Play over ...");
+                _mixer->deleteTrackName(track->getName());
+                tracksToRemove.push_back(track);
+                track->setState(Track::State::OVER);
             }
         }
     }
@@ -306,7 +323,7 @@ void AudioMixerController::mixOneFrame()
         }
         else
         {
-            ALOGE("track was released ...");
+            ALOGE("track (%p) was released ...", track);
         }
     }
 

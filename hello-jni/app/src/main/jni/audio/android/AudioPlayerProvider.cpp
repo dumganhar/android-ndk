@@ -30,14 +30,12 @@ THE SOFTWARE.
 #include "audio/android/AudioDecoder.h"
 #include "audio/android/AudioMixerController.h"
 #include "audio/android/PcmAudioService.h"
-#include "audio/android/AssetFd.h"
 #include "audio/android/CCThreadPool.h"
 #include "audio/android/ICallerThreadUtils.h"
 
 #include <sys/system_properties.h>
 #include <stdlib.h>
 #include <algorithm> // for std::find_if
-#include <chrono>
 
 namespace cocos2d {
 
@@ -147,8 +145,6 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
             {
                 // Put an empty lambda to preloadEffect since we only want the future object to get PcmData
                 auto promise = preloadEffect(info, [](bool, PcmData){});
-                auto promise2 = promise;
-                ALOGV("after preload effect, %d, promise2: %d", promise.use_count(), promise2.use_count());
                 auto fut = promise->get_future();
                 std::future_status statue = fut.wait_for(std::chrono::seconds(5));
                 if (statue == std::future_status::ready)
@@ -176,6 +172,25 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
 
 void AudioPlayerProvider::preloadEffect(const std::string &audioFilePath, const PreloadCallback& cb)
 {
+    // Pcm data decoding by OpenSLES API only supports in API level 17 and later.
+    if (getSystemAPILevel() < 17)
+    {
+        PcmData data;
+        cb(true, data);
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(_pcmCacheMutex);
+        auto&& iter = _pcmCache.find(audioFilePath);
+        if (iter != _pcmCache.end())
+        {
+            ALOGV("preload return from cache: (%s)", audioFilePath.c_str());
+            cb(true, iter->second);
+            return;
+        }
+    }
+
     auto info = getFileInfo(audioFilePath);
     preloadEffect(info, [this, cb, audioFilePath](bool succeed, PcmData data){
 
@@ -186,22 +201,16 @@ void AudioPlayerProvider::preloadEffect(const std::string &audioFilePath, const 
     });
 }
 
+// Used internally
 std::shared_ptr<std::promise<PcmData>> AudioPlayerProvider::preloadEffect(const AudioFileInfo &info, const PreloadCallback& cb)
 {
     auto promise = std::make_shared<std::promise<PcmData>>();
 
     PcmData pcmData;
-    // Pcm data decoding by OpenSLES API only supports in API level 17 and later.
-    if (getSystemAPILevel() < 17)
-    {
-        cb(true, pcmData);
-        promise->set_value(pcmData);
-        return promise;
-    }
 
     if (!info.isValid())
     {
-        cb(true, pcmData);
+        cb(false, pcmData);
         promise->set_value(pcmData);
         return promise;
     }
@@ -389,7 +398,12 @@ void AudioPlayerProvider::clearPcmCache(const std::string &audioFilePath)
     auto iter = _pcmCache.find(audioFilePath);
     if (iter != _pcmCache.end())
     {
+        ALOGV("clear pcm cache: (%s)", audioFilePath.c_str());
         _pcmCache.erase(iter);
+    }
+    else
+    {
+        ALOGW("Couldn't find the pcm cache: (%s)", audioFilePath.c_str());
     }
 }
 

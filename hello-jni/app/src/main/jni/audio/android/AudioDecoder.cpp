@@ -103,6 +103,7 @@ AudioDecoder::AudioDecoder(SLEngineItf engineItf, const std::string &url, int bu
 {
     BUFFER_SIZE_IN_BYTES = toBufferSizeInBytes(bufferSizeInFrames, 2, 2);
     _pcmData = (char*) malloc(NB_BUFFERS_IN_QUEUE * BUFFER_SIZE_IN_BYTES);
+    memset(_pcmData, 0x00, NB_BUFFERS_IN_QUEUE * BUFFER_SIZE_IN_BYTES);
     auto pcmBuffer = std::make_shared<std::vector<char>>();
     pcmBuffer->reserve(4096);
     _result.pcmBuffer = pcmBuffer;
