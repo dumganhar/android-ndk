@@ -141,7 +141,7 @@ public class HelloJni extends Activity
             Log.d(TAG, "load file: " + files[i]);
         }
 
-//        jniLoadSamples(files);
+        jniLoadSamples(files);
 
         // UI
         ViewGroup.LayoutParams layoutParams = new ViewGroup.LayoutParams(
@@ -497,7 +497,7 @@ public class HelloJni extends Activity
                     duplicatedFiles[i] = files[i % files.length];
                 }
 
-                jniLoadSamples(duplicatedFiles);
+//                jniLoadSamples(duplicatedFiles);
 
 //                for (int i = 0; i < 100000; ++i)
 //                {
@@ -522,7 +522,7 @@ public class HelloJni extends Activity
 
 
         mHandler = new Handler();
-//        mHandler.postDelayed(mRunnable, DELAY_TIME);
+        mHandler.postDelayed(mRunnable, DELAY_TIME);
 
         mCallerThreadHandler = new Handler();
         mCallerThreadHandler.postDelayed(new Runnable() {
@@ -735,7 +735,7 @@ public class HelloJni extends Activity
     protected void onResume() {
         Log.d(TAG, "onResume ...");
         super.onResume();
-//        mHandler.postDelayed(mRunnable, DELAY_TIME);
+        mHandler.postDelayed(mRunnable, DELAY_TIME);
         jniOnResume();
     }
 }

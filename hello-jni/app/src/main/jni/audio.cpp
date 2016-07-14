@@ -184,21 +184,21 @@ jboolean
 JNICALL
 AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_state) {
 
-    if (__fileIndex > 3)//28)
+    if (__fileIndex > 28)
     {
         __fileIndex = 0;
     }
     char filePath[256] = {0};
     sprintf(filePath, "%02d.mp3", __fileIndex);
     __currentFilePath = filePath;
-//    __currentFilePath = "doorOpen.ogg";//filePath;
 
     ++__fileIndex;
 
     std::string p = __currentFilePath;
+//    p = "test/A15.mp3";
     for (int i = 0; i < 10; ++i)
     {
-        __audioPlayerProvider->preloadEffect(__currentFilePath, [=](bool succeed, PcmData data) {
+        __audioPlayerProvider->preloadEffect(p, [=](bool succeed, PcmData data) {
             ALOGV("%d, preload (%s), succeed: %d, isValid: %d", i, p.c_str(), succeed, data.isValid());
         });
     }

@@ -144,20 +144,34 @@ IAudioPlayer *AudioPlayerProvider::getAudioPlayer(const std::string &audioFilePa
             if (isSmallFile(info))
             {
                 // Put an empty lambda to preloadEffect since we only want the future object to get PcmData
-                auto promise = preloadEffect(info, [](bool, PcmData){});
-                auto fut = promise->get_future();
-                std::future_status statue = fut.wait_for(std::chrono::seconds(5));
-                if (statue == std::future_status::ready)
+                auto pcmData = std::make_shared<PcmData>();
+                auto isSucceed = std::make_shared<bool>(false);
+                auto isReturnFromCache = std::make_shared<bool>(false);
+
+                std::thread::id threadId = std::this_thread::get_id();
+
+                preloadEffect(info, [threadId, pcmData, isSucceed, isReturnFromCache](bool succeed, PcmData data){
+                    // If the callback is in the same thread as caller's, it means that we found it
+                    // in the cache
+                    *isReturnFromCache = std::this_thread::get_id() == threadId;
+                    *pcmData = data;
+                    *isSucceed = succeed;
+                });
+
+                if (!*isReturnFromCache)
                 {
-                    PcmData pcmData = fut.get();
-                    if (pcmData.isValid())
-                    {
-                        player = obtainPcmAudioPlayer(info.url, pcmData);
-                    }
+                    std::unique_lock<std::mutex> lk(_preloadWaitMutex);
+                    // Wait for 2 seconds for the decoding in sub thread finishes.
+                    ALOGV("Waiting preload (%s) to finish ...", audioFilePath.c_str());
+                    _preloadWaitCond.wait_for(lk, std::chrono::seconds(2));
                 }
-                else
+
+                if (*isSucceed)
                 {
-                    ALOGW("Waiting future timeout ...");
+                    if (pcmData->isValid())
+                    {
+                        player = obtainPcmAudioPlayer(info.url, *pcmData);
+                    }
                 }
             }
             else
@@ -202,69 +216,66 @@ void AudioPlayerProvider::preloadEffect(const std::string &audioFilePath, const 
 }
 
 // Used internally
-std::shared_ptr<std::promise<PcmData>> AudioPlayerProvider::preloadEffect(const AudioFileInfo &info, const PreloadCallback& cb)
+void AudioPlayerProvider::preloadEffect(const AudioFileInfo &info, const PreloadCallback& cb)
 {
-    auto promise = std::make_shared<std::promise<PcmData>>();
-
     PcmData pcmData;
 
     if (!info.isValid())
     {
         cb(false, pcmData);
-        promise->set_value(pcmData);
-        return promise;
-    }
-
-    std::string audioFilePath = info.url;
-
-    {
-        std::lock_guard<std::mutex> lk(_pcmCacheMutex);
-        auto&& iter = _pcmCache.find(audioFilePath);
-        if (iter != _pcmCache.end())
-        {
-            ALOGV("1. Return pcm data from cache, url: %s", info.url.c_str());
-            promise->set_value(iter->second);
-            cb(true, iter->second);
-            return promise;
-        }
-    }
-
-    {
-        std::lock_guard<std::mutex> lk(_preloadCallbackMutex);
-
-        auto&& preloadIter = _preloadCallbackMap.find(audioFilePath);
-        if (preloadIter != _preloadCallbackMap.end())
-        {
-            ALOGV("audio (%s) is being preloading, add to callback vector!", audioFilePath.c_str());
-            PreloadCallbackParam param;
-            param.callback = cb;
-            param.promise = promise;
-            preloadIter->second.push_back(std::move(param));
-            return promise;
-        }
-
-        { // Check it in cache again
-            std::lock_guard<std::mutex> lk2(_pcmCacheMutex);
-            auto&& iter = _pcmCache.find(audioFilePath);
-            if (iter != _pcmCache.end())
-            {
-                ALOGV("2. Return pcm data from cache, url: %s", info.url.c_str());
-                promise->set_value(iter->second);
-                cb(true, iter->second);
-                return promise;
-            }
-        }
-
-        PreloadCallbackParam param;
-        param.callback = cb;
-        param.promise = promise;
-        std::vector<PreloadCallbackParam> callbacks;
-        callbacks.push_back(std::move(param));
-        _preloadCallbackMap.insert(std::make_pair(audioFilePath, std::move(callbacks)));
+        return;
     }
 
     if (isSmallFile(info))
     {
+        std::string audioFilePath = info.url;
+
+        {
+            // 1. First time check, if it wasn't in the cache, goto 2 step
+            std::lock_guard<std::mutex> lk(_pcmCacheMutex);
+            auto&& iter = _pcmCache.find(audioFilePath);
+            if (iter != _pcmCache.end())
+            {
+                ALOGV("1. Return pcm data from cache, url: %s", info.url.c_str());
+                cb(true, iter->second);
+                return;
+            }
+        }
+
+        {
+            // 2. Check whether the audio file is being preloaded, if it has been removed from map just now,
+            // goto step 3
+            std::lock_guard<std::mutex> lk(_preloadCallbackMutex);
+
+            auto&& preloadIter = _preloadCallbackMap.find(audioFilePath);
+            if (preloadIter != _preloadCallbackMap.end())
+            {
+                ALOGV("audio (%s) is being preloaded, add to callback vector!", audioFilePath.c_str());
+                PreloadCallbackParam param;
+                param.callback = cb;
+                preloadIter->second.push_back(std::move(param));
+                return;
+            }
+
+            {   // 3. Check it in cache again. If it has been removed from map just now, the file is in
+                // the cache absolutely.
+                std::lock_guard<std::mutex> lk2(_pcmCacheMutex);
+                auto&& iter = _pcmCache.find(audioFilePath);
+                if (iter != _pcmCache.end())
+                {
+                    ALOGV("2. Return pcm data from cache, url: %s", info.url.c_str());
+                    cb(true, iter->second);
+                    return;
+                }
+            }
+
+            PreloadCallbackParam param;
+            param.callback = cb;
+            std::vector<PreloadCallbackParam> callbacks;
+            callbacks.push_back(std::move(param));
+            _preloadCallbackMap.insert(std::make_pair(audioFilePath, std::move(callbacks)));
+        }
+
         _threadPool->pushTask([this, audioFilePath](int tid) {
             ALOGV("AudioPlayerProvider::preloadEffect: (%s)", audioFilePath.c_str());
             PcmData d;
@@ -291,21 +302,19 @@ std::shared_ptr<std::promise<PcmData>> AudioPlayerProvider::preloadEffect(const 
                 PcmData result = decoder.getResult();
                 for (auto&& param : params)
                 {
-                    param.promise->set_value(result);
                     param.callback(ret, result);
                 }
                 _preloadCallbackMap.erase(preloadIter);
+
+                _preloadWaitCond.notify_one();
             }
         });
     }
     else
     {
-        ALOGV("File (%s) is too large, ignore preload!", audioFilePath.c_str());
+        ALOGV("File (%s) is too large, ignore preload!", info.url.c_str());
         cb(true, pcmData);
-        promise->set_value(pcmData);
     }
-
-    return promise;
 }
 
 AudioPlayerProvider::AudioFileInfo AudioPlayerProvider::getFileInfo(
