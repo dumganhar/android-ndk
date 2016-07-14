@@ -195,7 +195,8 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
     ++__fileIndex;
 
     std::string p = __currentFilePath;
-//    p = "test/A15.mp3";
+//    p = "test/B9-Vilolins-8.mp3";
+
     for (int i = 0; i < 10; ++i)
     {
         __audioPlayerProvider->preloadEffect(p, [=](bool succeed, PcmData data) {
