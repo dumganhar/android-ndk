@@ -15,7 +15,7 @@
 
 #define AUDIO_FUNC(NAME)    Java_com_example_hellojni_HelloJni_##NAME
 
-using namespace cocos2d;
+using namespace cocos2d::experimental;
 
 static AudioEngine engine;
 static AudioOutputMix output;
