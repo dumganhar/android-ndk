@@ -220,7 +220,7 @@ AUDIO_FUNC(jniPlaySample)(JNIEnv *env, jclass clazz, jint index, jboolean play_s
     __audioPlayerProvider->clearAllPcmCaches();
 
     auto oldTime = clockNow();
-    auto player = __audioPlayerProvider->getAudioPlayer("crash_voice.mp3");//__currentFilePath);
+    auto player = __audioPlayerProvider->getAudioPlayer(__currentFilePath);
     if (player != nullptr) {
         player->play();
     } else {
