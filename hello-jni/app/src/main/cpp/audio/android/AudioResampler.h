@@ -29,9 +29,7 @@
 //#include <media/AudioBufferProvider.h>
 //#include <system/audio.h>
 #include <assert.h>
-#include "utils/Compat.h"
 #include "audio/android/audio.h"
-#include "audio.h"
 
 namespace cocos2d { namespace experimental {
 

@@ -11,6 +11,7 @@ add_library(hello-jni SHARED
             audio/android/audio_utils/format.c
             audio/android/audio_utils/minifloat.cpp
             audio/android/audio_utils/primitives.c
+            audio/android/utils/Utils.cpp
             audio/android/AssetFd.cpp
             audio/android/AudioDecoder.cpp
             audio/android/AudioMixer.cpp

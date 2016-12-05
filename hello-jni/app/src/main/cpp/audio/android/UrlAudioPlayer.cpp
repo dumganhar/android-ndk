@@ -95,7 +95,6 @@ void UrlAudioPlayer::playEventCallback(SLPlayItf caller, SLuint32 playEvent)
     // Note that it's on sub thread, please don't invoke OpenSLES API on sub thread
     if (playEvent == SL_PLAYEVENT_HEADATEND)
     {
-        ALOGV("UrlAudioPlayer (%p) SL_PLAYEVENT_HEADATEND", this);
         std::shared_ptr<bool> isDestroyed = _isDestroyed;
 
         auto func = [this, isDestroyed](){
@@ -170,7 +169,7 @@ void UrlAudioPlayer::stop()
     }
     else
     {
-        ALOGW("UrlAudioPlayer (%p, state:%d) isn't playing or paused, could not invoke stop!", this, _state);
+        ALOGW("UrlAudioPlayer (%p, state:%d) isn't playing or paused, could not invoke stop!", this, static_cast<int>(_state));
     }
 }
 
@@ -184,7 +183,7 @@ void UrlAudioPlayer::pause()
     }
     else
     {
-        ALOGW("UrlAudioPlayer (%p, state:%d) isn't playing, could not invoke pause!", this, _state);
+        ALOGW("UrlAudioPlayer (%p, state:%d) isn't playing, could not invoke pause!", this, static_cast<int>(_state));
     }
 }
 
@@ -198,7 +197,7 @@ void UrlAudioPlayer::resume()
     }
     else
     {
-        ALOGW("UrlAudioPlayer (%p, state:%d) isn't paused, could not invoke resume!", this, _state);
+        ALOGW("UrlAudioPlayer (%p, state:%d) isn't paused, could not invoke resume!", this, static_cast<int>(_state));
     }
 }
 
@@ -212,7 +211,7 @@ void UrlAudioPlayer::play()
     }
     else
     {
-        ALOGW("UrlAudioPlayer (%p, state:%d) isn't paused or initialized, could not invoke play!", this, _state);
+        ALOGW("UrlAudioPlayer (%p, state:%d) isn't paused or initialized, could not invoke play!", this, static_cast<int>(_state));
     }
 }
 
@@ -277,7 +276,18 @@ bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, std::
     _url = url;
     _assetFd = assetFd;
 
-    ALOGV("UrlAudioPlayer::prepare: %s, %d, %d, %d, %d", _url.c_str(), (int)locatorType, assetFd->getFd(), start,
+    const char* locatorTypeStr= "UNKNOWN";
+    if (locatorType == SL_DATALOCATOR_ANDROIDFD)
+        locatorTypeStr = "SL_DATALOCATOR_ANDROIDFD";
+    else if (locatorType == SL_DATALOCATOR_URI)
+        locatorTypeStr = "SL_DATALOCATOR_URI";
+    else
+    {
+        ALOGE("Oops, invalid locatorType: %d", (int)locatorType);
+        return false;
+    }
+
+    ALOGV("UrlAudioPlayer::prepare: %s, %s, %d, %d, %d", _url.c_str(), locatorTypeStr, _assetFd->getFd(), start,
          length);
     SLDataSource audioSrc;
 
@@ -303,11 +313,6 @@ bool UrlAudioPlayer::prepare(const std::string &url, SLuint32 locatorType, std::
         locUri = {locatorType, (SLchar *) _url.c_str()};
         audioSrc.pLocator = &locUri;
         ALOGV("locUri: locatorType: %d", (int)locUri.locatorType);
-    }
-    else
-    {
-        ALOGE("Oops, invalid locatorType: %d", (int)locatorType);
-        return false;
     }
 
     // configure audio sink
@@ -395,22 +400,8 @@ void UrlAudioPlayer::destroy()
     {
         *_isDestroyed = true;
         ALOGV("UrlAudioPlayer::destroy() %p", this);
-
-        //In order to prevent potential deadlock, delay 100ms to destroy OpenSLES play obj
-        auto playObj = _playObj;
-        void* thiz = this;
-        std::shared_ptr<bool> playObjDestroyed = std::make_shared<bool>(false);
-        _callerThreadUtils->setTimeout([playObj, thiz, playObjDestroyed](){
-            if (!*playObjDestroyed)
-            {
-                if (playObj != nullptr)
-                {
-                    (*playObj)->Destroy(playObj);
-                }
-                *playObjDestroyed = true;
-                ALOGV("UrlAudioPlayer::destroy() %p end", thiz);
-            }
-        }, 0.05f);
+        SL_DESTROY_OBJ(_playObj);
+        ALOGV("UrlAudioPlayer::destroy end");
     }
 }
 

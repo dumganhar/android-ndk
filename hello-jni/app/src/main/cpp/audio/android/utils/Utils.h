@@ -21,21 +21,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-#pragma once
 
-#include <functional>
-#include <thread>
+#include <string>
 
 namespace cocos2d { namespace experimental {
-
-class ICallerThreadUtils
-{
-public:
-    virtual ~ICallerThreadUtils()
-    { };
-
-    virtual void performFunctionInCallerThread(const std::function<void()>& func) = 0;
-    virtual std::thread::id getCallerThreadId() = 0;
-};
-
-}} // namespace cocos2d { namespace experimental {
+	extern int getSDKVersion();
+}}
